@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "outDir": "dist-electron",
+    "target": "ES2020"
+  },
+  "include": ["electron/**/*"],
+  "exclude": ["node_modules"]
+}

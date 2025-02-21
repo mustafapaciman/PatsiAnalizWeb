@@ -1,0 +1,263 @@
+/* Tüm tema geçişleri için smooth animasyon */
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease !important;
+}
+
+/* Select elementleri için özel stiller */
+.dark select {
+  background-color: rgb(30 58 138 / 0.95) !important; /* Koyu mavi arka plan */
+  color: rgb(255 255 255) !important; /* Beyaz metin */
+  border-color: rgb(59 130 246 / 0.5) !important; /* Açık mavi border */
+  transform-origin: top;
+  transition: all 0.2s ease !important;
+}
+
+.dark select option {
+  background-color: rgb(30 58 138) !important; /* Koyu mavi */
+  color: rgb(255 255 255) !important; /* Beyaz metin */
+}
+
+/* Select hover durumu için */
+.dark select:hover {
+  background-color: rgb(30 64 175) !important; /* Biraz daha açık mavi */
+  border-color: rgb(59 130 246 / 0.8) !important;
+}
+
+/* Select focus durumu için */
+.dark select:focus {
+  background-color: rgb(30 58 138) !important;
+  border-color: rgb(59 130 246) !important; /* Parlak mavi border */
+  box-shadow: 0 0 0 2px rgb(59 130 246 / 0.25) !important; /* Mavi glow efekti */
+  transform: scale(1.02);
+}
+
+/* Dropdown açıldığında option'ların hover durumu */
+.dark select option:hover,
+.dark select option:focus,
+.dark select option:active,
+.dark select option:checked {
+  background-color: rgb(37 99 235) !important; /* Seçili durumda daha parlak mavi */
+  color: white !important;
+}
+
+/* Scrollbar stilleri */
+.dark *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dark *::-webkit-scrollbar-track {
+  background: rgb(30 58 138 / 0.1);
+  border-radius: 4px;
+}
+
+.dark *::-webkit-scrollbar-thumb {
+  background: rgb(59 130 246 / 0.5);
+  border-radius: 4px;
+}
+
+.dark *::-webkit-scrollbar-thumb:hover {
+  background: rgb(59 130 246 / 0.8);
+}
+
+/* Input stilleri - çünkü projede input elementleri de var */
+.dark input[type="text"],
+.dark input[type="number"],
+.dark input[type="search"] {
+  background-color: rgb(30 58 138 / 0.95) !important;
+  color: white !important;
+  border-color: rgb(59 130 246 / 0.5) !important;
+}
+
+/* Focus outline stilleri - erişilebilirlik için önemli */
+.dark *:focus-visible {
+  outline: 2px solid rgb(59 130 246 / 0.5) !important;
+  outline-offset: 2px !important;
+}
+
+/* Buton hover efektleri */
+.dark button:not(:disabled) {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dark button:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
+.dark button:not(:disabled):active {
+  transform: translateY(0);
+}
+
+/* Kart ve panel gölgeleri */
+.dark .card,
+.dark .panel {
+  box-shadow: 0 4px 20px rgba(30, 58, 138, 0.3) !important;
+  backdrop-filter: blur(8px);
+}
+
+.dark .card:hover {
+  box-shadow: 0 8px 30px rgba(59, 130, 246, 0.4) !important;
+}
+
+/* Loading durumları için pulse efekti */
+.dark .loading {
+  position: relative;
+  overflow: hidden;
+}
+
+.dark .loading::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(59, 130, 246, 0.2),
+    transparent
+  );
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Tooltip stilleri */
+.dark [data-tooltip] {
+  position: relative;
+}
+
+.dark [data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background-color: rgb(30 58 138);
+  color: white;
+  font-size: 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+}
+
+.dark [data-tooltip]:hover::before {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(-8px);
+}
+
+/* Seçili metin stilleri */
+.dark ::selection {
+  background-color: rgba(59, 130, 246, 0.3);
+  color: white;
+}
+
+/* Sayfa geçiş animasyonları */
+.dark .page-transition-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.dark .page-transition-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.dark .page-transition-exit {
+  opacity: 1;
+}
+
+.dark .page-transition-exit-active {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+/* İstatistik kartları için özel efektler */
+.dark .stat-card {
+  background: linear-gradient(
+    135deg,
+    rgb(30 58 138 / 0.95),
+    rgb(37 99 235 / 0.9)
+  ) !important;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.dark .stat-card:hover {
+  background: linear-gradient(
+    135deg,
+    rgb(37 99 235 / 0.95),
+    rgb(30 58 138 / 0.9)
+  ) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(30, 58, 138, 0.3);
+}
+
+/* Tablo başlıkları için özel stiller */
+.dark th {
+  background: rgb(30 58 138 / 0.95) !important;
+  color: white !important;
+  border-bottom: 2px solid rgb(59 130 246 / 0.5) !important;
+}
+
+.dark tr:hover td {
+  background: rgb(37 99 235 / 0.1) !important;
+}
+
+/* Switch/toggle butonları */
+.dark .switch {
+  position: relative;
+  width: 50px;
+  height: 24px;
+  background: rgb(30 58 138 / 0.3);
+  border-radius: 12px;
+  padding: 2px;
+  transition: all 0.3s;
+}
+
+.dark .switch.active {
+  background: rgb(59 130 246);
+}
+
+.dark .switch::before {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: white;
+  left: 2px;
+  transition: all 0.3s;
+}
+
+.dark .switch.active::before {
+  left: 28px;
+}
+
+/* Badge/etiket stilleri */
+.dark .badge {
+  background: rgb(30 58 138 / 0.2);
+  border: 1px solid rgb(59 130 246 / 0.3);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.dark .badge:hover {
+  background: rgb(37 99 235 / 0.3);
+  border-color: rgb(59 130 246 / 0.5);
+  transform: scale(1.05);
+} 

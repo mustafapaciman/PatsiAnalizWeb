@@ -1,0 +1,75 @@
+import * as XLSX from 'xlsx';
+import { TeamMapping } from './types/team';
+import { fetchFromGithub } from './githubLoader';
+
+// Takım logolarını Wikimedia Commons'dan al
+export const getTeamLogo = (teamName: string): string => {
+  const teamLogoMap: { [key: string]: string } = {
+    // ... existing code ...
+  };
+
+  // Takım ismini normalize et
+  const normalizedName = teamName.replace(/\s+/g, '').toLowerCase()
+    .replace(/ı/g, 'i')
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/â/g, 'a')
+    .replace(/î/g, 'i')
+    .replace(/û/g, 'u');
+
+  const matchingTeam = Object.keys(teamLogoMap).find(team => 
+    team.replace(/\s+/g, '').toLowerCase()
+      .replace(/ı/g, 'i')
+      .replace(/ğ/g, 'g')
+      .replace(/ü/g, 'u')
+      .replace(/ş/g, 's')
+      .replace(/ö/g, 'o')
+      .replace(/ç/g, 'c')
+      .replace(/â/g, 'a')
+      .replace(/î/g, 'i')
+      .replace(/û/g, 'u') === normalizedName
+  );
+
+  return matchingTeam ? teamLogoMap[matchingTeam] : '';
+};
+
+export async function loadTeamLogos(): Promise<TeamMapping> {
+  try {
+    console.log('Loading team logos from GitHub...');
+    const buffer = await fetchFromGithub('data/team_logos.xlsx');
+    console.log('Buffer received, creating workbook...');
+    const workbook = XLSX.read(buffer);
+    
+    console.log('Workbook created, sheets:', workbook.SheetNames);
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    console.log('Using worksheet:', workbook.SheetNames[0]);
+    
+    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+    console.log('Parsed JSON data:', jsonData);
+    
+    const teamData: TeamMapping = {};
+    jsonData.forEach((row: any) => {
+      console.log('Processing row:', row);
+      teamData[row.name] = {
+        name: row.name,
+        logoUrl: row.logoUrl,
+        shortDisplayName: row.shortDisplayName || row.name
+      };
+      
+      // Kısa isim varsa, o isimle de ekleyelim
+      if (row.shortDisplayName && row.shortDisplayName !== row.name) {
+        teamData[row.shortDisplayName] = teamData[row.name];
+      }
+    });
+    
+    console.log('Team logos loaded successfully:', Object.keys(teamData).length, 'teams found');
+    console.log('Team data:', teamData);
+    return teamData;
+  } catch (error) {
+    console.error('Error loading team logos:', error);
+    throw error;
+  }
+} 

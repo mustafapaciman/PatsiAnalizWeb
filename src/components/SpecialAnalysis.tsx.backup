@@ -1,0 +1,2391 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Match } from '../utils/types/match';
+import { TeamMapping } from '../utils/types/team';
+import { TeamLogo } from './TeamLogo';
+import { getTeamLogo } from '../utils/teamLogoLoader';
+import { parseDateString } from '../utils/dateUtils';
+import { Sparkles, ChevronDown, ChevronUp, AlertTriangle, Trophy, TrendingUp, Scale, Info, ChevronLeft, ChevronRight, Brain, Calendar, Clock, Image, Sun, Moon, Users, Target } from 'lucide-react';
+import { TeamAnalysisPanel } from './TeamAnalysisPanel';
+import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
+
+// Constants
+const EMPTY_LOGO = "https://www.clipartmax.com/png/small/19-194962_coa-illustration-shield-triangular-team-logo-template-png.png";
+
+// League mappings
+const LEAGUE_NAMES: { [key: string]: string } = {
+  'E0': 'Premier League',
+  'E1': 'Championship',
+  'E2': 'League One',
+  'E3': 'League Two',
+  'EC': 'Conference',
+  'SC0': 'Scotland Premier League',
+  'SC1': 'Scotland Championship',
+  'SC2': 'Scotland League One',
+  'SC3': 'Scotland League Two',
+  'SP1': 'La Liga',
+  'SP2': 'La Liga 2',
+  'D1': 'Bundesliga',
+  'D2': '2. Bundesliga',
+  'I1': 'Serie A',
+  'I2': 'Serie B',
+  'F1': 'Ligue 1',
+  'F2': 'Ligue 2',
+  'N1': 'Eredivisie',
+  'P1': 'Primeira Liga',
+  'T1': 'Süper Lig',
+  'B1': 'Belgian Pro League',
+  'G1': 'Greek Super League'
+};
+
+// Types
+interface League {
+  id: string;
+  name: string;
+}
+
+interface Team {
+  id: string;
+  name: string;
+  league: string;
+}
+
+interface MatchDetails {
+  score: string;
+  htScore: string;
+  date: string;
+  redCards?: number;
+  opponent: string;
+  isHome?: boolean;
+}
+
+interface FilteredMatch extends MatchDetails {
+  isHome: boolean;
+}
+
+interface SurpriseOpponent {
+  count: number;
+  lastMatch: MatchDetails;
+  allMatches: MatchDetails[];
+}
+
+interface TeamData {
+  surpriseOpponents: { [key: string]: SurpriseOpponent };
+  preSurpriseScores: { [key: string]: number };
+  redCardImpact: { [key: string]: number };
+  lastThreeMatches: MatchDetails[];
+}
+
+interface TeamAnalysisData {
+  homeTeam: TeamData;
+  awayTeam: TeamData;
+  similarOddsMatches: Match[];
+  aiAnalysis: {
+    team1Analysis: string[];
+    team2Analysis: string[];
+    generalAnalysis: string[];
+  };
+}
+
+interface SpecialAnalysisProps {
+  matchData: Match[];
+  teamData: TeamMapping;
+  selectedMatch: Match | null;
+}
+
+// Oran tiplerini tanımla
+const ODD_TYPES: { [key: string]: string } = {
+  // Bet365 Oranları
+  'B365H': 'Bet365 Ev Sahibi',
+  'B365D': 'Bet365 Beraberlik',
+  'B365A': 'Bet365 Deplasman',
+  'B365CH': 'Bet365 Ev Sahibi (Kapanış)',
+  'B365CD': 'Bet365 Beraberlik (Kapanış)',
+  'B365CA': 'Bet365 Deplasman (Kapanış)',
+  'B365>2.5': 'Bet365 2.5 Üst',
+  'B365<2.5': 'Bet365 2.5 Alt',
+  'B365AHH': 'Bet365 Handikap Ev',
+  'B365AHA': 'Bet365 Handikap Dep',
+  'B365CAHH': 'Bet365 Handikap Ev (Kapanış)',
+  'B365CAHA': 'Bet365 Handikap Dep (Kapanış)',
+  // Diğer Bookmakerlar
+  'BWH': 'Bet&Win Ev Sahibi',
+  'BWD': 'Bet&Win Beraberlik',
+  'BWA': 'Bet&Win Deplasman',
+  'IWH': 'Interwetten Ev Sahibi',
+  'IWD': 'Interwetten Beraberlik',
+  'IWA': 'Interwetten Deplasman',
+  'PSH': 'Pinnacle Ev Sahibi',
+  'PSD': 'Pinnacle Beraberlik',
+  'PSA': 'Pinnacle Deplasman',
+  'WHH': 'William Hill Ev Sahibi',
+  'WHD': 'William Hill Beraberlik',
+  'WHA': 'William Hill Deplasman',
+  'VCH': 'VC Bet Ev Sahibi',
+  'VCD': 'VC Bet Beraberlik',
+  'VCA': 'VC Bet Deplasman',
+  // Genel İstatistikler
+  'MaxH': 'En Yüksek Ev Sahibi',
+  'MaxD': 'En Yüksek Beraberlik',
+  'MaxA': 'En Yüksek Deplasman',
+  'AvgH': 'Ortalama Ev Sahibi',
+  'AvgD': 'Ortalama Beraberlik',
+  'AvgA': 'Ortalama Deplasman'
+};
+
+// Oran gösterimini formatla
+const formatOddDisplay = (oddKey: string, oddValue: number): string => {
+  const isClosingOdd = oddKey.includes('C') && !oddKey.startsWith('VC');
+  const oddName = ODD_TYPES[oddKey] || oddKey;
+  const formattedValue = oddValue.toFixed(2);
+  return `${oddName}: ${formattedValue}${isClosingOdd ? ' (Kapanış)' : ''}`;
+};
+
+// Excel tarihini normal tarihe çeviren fonksiyon
+const convertExcelDate = (excelDate: number | string): string => {
+  // Eğer tarih zaten string formatında ise direkt döndür
+  if (typeof excelDate === 'string' && excelDate.includes('-')) {
+    const [year, month, day] = excelDate.split('-');
+    return `${day}.${month}.${year}`;
+  }
+  
+  // String ise sayıya çevir
+  const numericDate = typeof excelDate === 'string' ? parseInt(excelDate) : excelDate;
+  
+  // Geçerli bir sayı değilse orijinal değeri döndür
+  if (!Number.isFinite(numericDate)) return String(excelDate);
+
+  // Excel tarihi 1900'den başlar ve geçen gün sayısını temsil eder
+  const EXCEL_START_DATE = new Date(1900, 0, 1);
+  
+  // Excel'in 1900'ü artık yıl sayma hatasını düzelt
+  const adjustedDate = numericDate <= 60 ? numericDate - 1 : numericDate - 2;
+  
+  // Milisaniyeye çevir ve başlangıç tarihine ekle
+  const date = new Date(EXCEL_START_DATE.getTime() + (adjustedDate * 24 * 60 * 60 * 1000));
+  
+  // Tarihi formatla
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  
+  return `${day}.${month}.${year}`;
+};
+
+// Sürpriz öncesi skor örüntülerini analiz et
+function analyzePreSurpriseScores(matches: Match[], surpriseMatches: Match[]) {
+  const scores: { [key: string]: number } = {};
+  surpriseMatches.forEach(sm => {
+    const preMatch = matches
+      .filter(m => new Date(m.Date) < new Date(sm.Date))
+      .sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime())[0];
+    
+    if (preMatch) {
+      const score = `${preMatch.FTHG}-${preMatch.FTAG}`;
+      scores[score] = (scores[score] || 0) + 1;
+    }
+  });
+
+  // Skorları yüzdeye göre sırala
+  const total = Object.values(scores).reduce((sum, count) => sum + count, 0);
+  const sortedScores: { [key: string]: number } = {};
+  
+  Object.entries(scores)
+    .map(([score, count]) => ({
+      score,
+      percentage: (count / total) * 100
+    }))
+    .sort((a, b) => b.percentage - a.percentage)
+    .forEach(({ score, percentage }) => {
+      sortedScores[score] = scores[score];
+    });
+
+  return sortedScores;
+}
+
+// Kırmızı kart etkisini analiz et
+function analyzeRedCardImpact(matches: Match[]) {
+  const impact: { [key: string]: number } = {
+    "Kırmızı Kartlı": 0,
+    "Kartsız": 0
+  };
+  matches.forEach(m => {
+    if (m.RC && m.RC > 0) {
+      impact["Kırmızı Kartlı"]++;
+    } else {
+      impact["Kartsız"]++;
+    }
+  });
+  return impact;
+}
+
+// AI analizi oluştur
+function analyzeTriggers(surprises: Match[], teamName: string, matchData: Match[]) {
+  // Her sürpriz maçtan önceki rakibi bul
+  const triggerCounts: { [key: string]: { matches: Match[], dates: string[], triggerMatches: Match[] } } = {};
+  
+  surprises.forEach(surprise => {
+    // Sürpriz maçtan önceki maçı bul
+    const previousMatch = matchData
+      .filter(m => 
+        (m.HomeTeam === teamName || m.AwayTeam === teamName) &&
+        new Date(m.Date) < new Date(surprise.Date)
+      )
+      .sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime())[0];
+
+    if (previousMatch) {
+      // Önceki maçtaki rakibi bul
+      const opponent = previousMatch.HomeTeam === teamName ? 
+        previousMatch.AwayTeam : previousMatch.HomeTeam;
+
+      if (!triggerCounts[opponent]) {
+        triggerCounts[opponent] = { matches: [], dates: [], triggerMatches: [] };
+      }
+      triggerCounts[opponent].matches.push(surprise);
+      triggerCounts[opponent].dates.push(previousMatch.Date);
+      triggerCounts[opponent].triggerMatches.push(previousMatch);
+    }
+  });
+
+  // En az 2 kez tetikleme yapan takımları bul
+  const triggers = Object.entries(triggerCounts)
+    .filter(([_, data]) => data.matches.length >= 2)
+    .sort((a, b) => b[1].matches.length - a[1].matches.length);
+
+  const html = triggers.length > 0 ? `
+    <div class="space-y-4">
+      <div class="flex items-center justify-between bg-gray-100 p-3 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors" 
+           onclick="this.nextElementSibling.classList.toggle('hidden')">
+        <div class="flex items-center gap-2">
+          <Target class="w-5 h-5 text-gray-600" />
+          <div class="flex items-center">
+            <span class="font-semibold text-gray-700">Tetikleyici</span>
+            <span class="font-semibold text-gray-700 ml-1">Takımlar</span>
+          </div>
+        </div>
+        <ChevronDown class="w-5 h-5 text-gray-600" />
+      </div>
+      <div class="space-y-4 text-left">
+        ${triggers.map(([opponent, data], index) => {
+          const triggerCount = data.matches.length;
+          let badgeColor = 'bg-green-500/20';
+          let headerGradient = 'from-emerald-600 to-teal-700';
+          
+          if (triggerCount >= 5) {
+            badgeColor = 'bg-red-500/20';
+            headerGradient = 'from-red-600 to-rose-700';
+          } else if (triggerCount >= 3) {
+            badgeColor = 'bg-orange-500/20';
+            headerGradient = 'from-orange-600 to-amber-700';
+          }
+          
+          return `
+            <div class="bg-white rounded-lg overflow-hidden shadow-lg border border-gray-200 transform transition-all duration-300 hover:scale-[1.02] hover:shadow-xl">
+              <div class="bg-gradient-to-r ${headerGradient} p-4">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-full bg-white p-1 shadow-lg transform transition-transform duration-300 hover:rotate-12">
+                      <img
+                        src="${getTeamLogo(opponent)}"
+                        alt="${opponent}"
+                        class="w-full h-full object-contain rounded-full"
+                        onerror="this.src='${EMPTY_LOGO}'"
+                      />
+                    </div>
+                    <div class="text-white">
+                      <h3 class="font-bold text-lg">${opponent}</h3>
+                      <p class="text-blue-100 text-sm">Tetikleyici Takım</p>
+                    </div>
+                  </div>
+                  <div class="px-4 py-2 ${badgeColor} text-white rounded-full text-sm font-medium backdrop-blur-sm">
+                    ${data.matches.length} kez tetikledi
+                  </div>
+                </div>
+              </div>
+              <div class="divide-y divide-gray-100">
+                ${data.matches.map((match, index) => `
+                  <div class="p-4 hover:bg-blue-50 transition-all duration-200">
+                    <div class="grid grid-cols-12 gap-4 items-center text-sm">
+                      <div class="col-span-2 font-medium text-gray-600 text-center">
+                        ${convertExcelDate(data.dates[index])}
+                      </div>
+                      <div class="col-span-4 text-gray-600 bg-amber-50/50 rounded-lg p-2 text-center">
+                        ${data.triggerMatches[index].HomeTeam} 
+                        <span class="font-bold text-gray-800">${data.triggerMatches[index].FTHG}-${data.triggerMatches[index].FTAG}</span> 
+                        ${data.triggerMatches[index].AwayTeam}
+                      </div>
+                      <div class="col-span-1 flex justify-center">
+                        <div class="h-6 w-0.5 bg-gray-300"></div>
+                      </div>
+                      <div class="col-span-5 text-gray-800 bg-blue-50/50 rounded-lg p-2 text-center">
+                        ${match.HomeTeam} 
+                        <span class="font-bold text-gray-800">${match.FTHG}-${match.FTAG}</span> 
+                        ${match.AwayTeam}
+                      </div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  ` : `<div class="text-gray-500">Tetikleyici takım bulunamadı.</div>`;
+
+  return {
+    html,
+    triggerCounts
+  };
+}
+
+// Lig tetikleyicisi analizi
+function findLeagueTrigger(matches: Match[], teamName: string) {
+  // Takımın ligini bul
+  const teamLeague = matches.find(m => m.HomeTeam === teamName || m.AwayTeam === teamName)?.Div;
+  if (!teamLeague) return null;
+
+  // Ligdeki tüm takımları bul
+  const leagueTeams = new Set<string>();
+  matches.filter(m => m.Div === teamLeague).forEach(m => {
+    leagueTeams.add(m.HomeTeam);
+    leagueTeams.add(m.AwayTeam);
+  });
+
+  // Her takım için tetikleme sayısını hesapla
+  const triggerCounts: { [key: string]: { count: number, triggeredTeams: { team: string, match: Match }[] } } = {};
+
+  // Tüm sürpriz maçları bul
+  const surpriseMatches = matches.filter(m => 
+    m.Div === teamLeague && 
+    ((m.HTR === "H" && m.FTR === "A") || (m.HTR === "A" && m.FTR === "H"))
+  );
+
+  // Her sürpriz maç için, önceki maçtaki rakipleri kontrol et
+  surpriseMatches.forEach(surprise => {
+    const surpriseTeam = surprise.HTR === "H" ? surprise.AwayTeam : surprise.HomeTeam;
+    
+    // Sürpriz yapan takımın bir önceki maçını bul
+    const previousMatch = matches
+      .filter(m => 
+        (m.HomeTeam === surpriseTeam || m.AwayTeam === surpriseTeam) &&
+        new Date(m.Date) < new Date(surprise.Date)
+      )
+      .sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime())[0];
+
+    if (previousMatch) {
+      // Önceki maçtaki rakibi bul
+      const opponent = previousMatch.HomeTeam === surpriseTeam ? 
+        previousMatch.AwayTeam : previousMatch.HomeTeam;
+
+      if (!triggerCounts[opponent]) {
+        triggerCounts[opponent] = { count: 0, triggeredTeams: [] };
+      }
+      
+      // Bu takım-maç kombinasyonu daha önce eklenmemişse ekle
+      const isNewTrigger = !triggerCounts[opponent].triggeredTeams.some(
+        t => t.team === surpriseTeam
+      );
+      
+      if (isNewTrigger) {
+        triggerCounts[opponent].count++;
+        triggerCounts[opponent].triggeredTeams.push({
+          team: surpriseTeam,
+          match: surprise
+        });
+      }
+    }
+  });
+
+  // En çok tetikleyen takımları bul (en az 3 farklı takımı tetiklemiş olmalı)
+  const leagueTriggers = Object.entries(triggerCounts)
+    .filter(([_, data]) => data.count >= 3)
+    .sort(([_, a], [__, b]) => b.count - a.count)
+    .slice(0, 2); // En çok tetikleyen 2 takımı al
+
+  return leagueTriggers.length > 0 ? leagueTriggers.map(([team, data]) => ({
+    team,
+    ...data
+  })) : null;
+}
+
+function createAIAnalysis(
+  team1Surprises: Match[], 
+  team2Surprises: Match[],
+  team1PreScores: { [key: string]: number },
+  team2PreScores: { [key: string]: number },
+  team1Name: string,
+  team2Name: string,
+  matchData: Match[]
+) {
+  const analysis = {
+    team1Analysis: [] as string[],
+    team2Analysis: [] as string[],
+    generalAnalysis: [] as string[]
+  };
+
+  // Tetikleyici takımlar analizi
+  const team1TriggerAnalysis = analyzeTriggers(team1Surprises, team1Name, matchData);
+  const team2TriggerAnalysis = analyzeTriggers(team2Surprises, team2Name, matchData);
+
+  // Lig tetikleyicisi analizi
+  const team1LeagueTrigger = findLeagueTrigger(matchData, team1Name);
+  const team2LeagueTrigger = findLeagueTrigger(matchData, team2Name);
+
+  if (team1LeagueTrigger) {
+    const leagueTriggerHtml = team1LeagueTrigger.map(trigger => `
+      <div class="space-y-4">
+        <div class="flex items-center justify-between bg-gray-100 p-3 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors" 
+             onclick="this.nextElementSibling.classList.toggle('hidden')">
+          <div class="flex items-center gap-2">
+            <Target class="w-5 h-5 text-gray-600" />
+            <div class="flex items-center">
+              <span class="font-semibold text-gray-700">Lig</span>
+              <span class="font-semibold text-gray-700 ml-1">Tetikleyicisi</span>
+              </div>
+              </div>
+          <ChevronDown class="w-5 h-5 text-gray-600" />
+            </div>
+        <div class="space-y-4 text-left">
+          <div class="bg-white rounded-lg overflow-hidden shadow-lg border border-gray-200">
+            <div class="bg-gradient-to-r from-violet-600 to-purple-700 p-4">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="w-12 h-12 rounded-full bg-white p-1 shadow-lg">
+                    <img
+                      src="${getTeamLogo(trigger.team)}"
+                      alt="${trigger.team}"
+                      class="w-full h-full object-contain rounded-full"
+                      onerror="this.src='${EMPTY_LOGO}'"
+                    />
+          </div>
+                  <div class="text-white">
+                    <h3 class="font-bold text-lg">${trigger.team}</h3>
+                    <p class="text-purple-100 text-sm">Lig Tetikleyicisi</p>
+        </div>
+      </div>
+                <div class="px-4 py-2 bg-purple-500/20 text-white rounded-full text-sm font-medium backdrop-blur-sm">
+                  ${trigger.count} takımı tetikledi
+        </div>
+              </div>
+              </div>
+            <div class="p-4 bg-purple-50/50">
+              <p class="text-sm text-gray-600 mb-4">
+                Bu takım, ligdeki farklı takımların sürpriz yapmasını tetikliyor. 
+                Toplam ${trigger.count} farklı takımın sürpriz yapmasına öncülük etti.
+              </p>
+              <div class="overflow-hidden rounded-lg border border-purple-100">
+                <table class="min-w-full divide-y divide-purple-100">
+                  <thead class="bg-purple-50">
+                    <tr>
+                      <th class="px-4 py-2 text-left text-xs font-medium text-purple-800">Tarih</th>
+                      <th class="px-4 py-2 text-left text-xs font-medium text-purple-800">Tetikleyicinin Maçı</th>
+                      <th class="px-4 py-2 text-left text-xs font-medium text-purple-800">Skor</th>
+                    </tr>
+                  </thead>
+                  <tbody class="bg-white divide-y divide-purple-100">
+                    ${trigger.triggeredTeams.map(t => {
+                      // Tetikleyici takımın maçını bul
+                      const previousMatch = matchData
+                        .filter(m => 
+                          (m.HomeTeam === t.team || m.AwayTeam === t.team) &&
+                          (m.HomeTeam === trigger.team || m.AwayTeam === trigger.team) &&
+                          new Date(m.Date) < new Date(t.match.Date)
+                        )
+                        .sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime())[0];
+
+                      if (previousMatch) {
+                        const isHome = previousMatch.HomeTeam === trigger.team;
+                        const score = `${previousMatch.FTHG}-${previousMatch.FTAG}`;
+                        
+                        return `
+                          <tr class="hover:bg-purple-50/50">
+                            <td class="px-4 py-2 text-sm text-gray-600">${convertExcelDate(previousMatch.Date)}</td>
+                            <td class="px-4 py-2 text-sm text-gray-600">
+                              ${previousMatch.HomeTeam} - ${previousMatch.AwayTeam}
+                            </td>
+                            <td class="px-4 py-2 text-sm font-medium text-gray-800">${score}</td>
+                          </tr>
+                        `;
+                      }
+                      return '';
+                    }).join('')}
+                  </tbody>
+                </table>
+        </div>
+              </div>
+              </div>
+            </div>
+          </div>
+    `).join('');
+
+    analysis.team1Analysis.push(team1TriggerAnalysis.html);
+    analysis.team1Analysis.push(leagueTriggerHtml);
+
+    // Son 3 maç analizi
+    const team1LastMatches = matchData
+      .filter(m => m.HomeTeam === team1Name || m.AwayTeam === team1Name)
+      .sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime())
+      .slice(0, 3);
+
+    const lastMatchesHtml = `
+      <div class="bg-white rounded-lg overflow-hidden shadow-lg border border-gray-200 mt-4">
+        <div class="divide-y divide-gray-100">
+          ${team1LastMatches.map((match, index) => {
+            const isHome = match.HomeTeam === team1Name;
+            const opponent = isHome ? match.AwayTeam : match.HomeTeam;
+            const score = `${match.FTHG}-${match.FTAG}`;
+            
+            // Maç sonucuna göre renk belirleme
+            let resultBgColor = 'bg-yellow-100';
+            if ((isHome && match.FTR === 'H') || (!isHome && match.FTR === 'A')) {
+              resultBgColor = 'bg-green-100';
+            } else if ((isHome && match.FTR === 'A') || (!isHome && match.FTR === 'H')) {
+              resultBgColor = 'bg-red-100';
+            }
+
+            // Kırmızı kart kontrolü
+            const hasRedCard = match.HR > 0 || match.AR > 0;
+            const redCardIcon = hasRedCard ? `
+              <div class="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center shadow-lg animate-pulse">
+                <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                </div>
+            ` : '';
+
+            // En son maçtaki rakip için tetikleyici kontrolü (index === 0 en son maç)
+            let triggerWarning = '';
+            if (index === 0) {
+              // Lig tetikleyicisi kontrolü
+              const isLeagueTrigger = team1LeagueTrigger?.some(trigger => trigger.team === opponent);
+              // Takım tetikleyicisi kontrolü
+              const isTeamTrigger = Object.entries(team1TriggerAnalysis.triggerCounts)
+                .some(([team, data]) => team === opponent && data.matches.length >= 2);
+
+              if (isLeagueTrigger || isTeamTrigger) {
+                triggerWarning = `
+                  <div class="absolute -top-1 -left-1 group">
+                    <div class="w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center shadow-lg animate-bounce">
+                      <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+          </div>
+                    <div class="absolute left-6 top-0 hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 whitespace-nowrap">
+                      ${isLeagueTrigger ? 'Lig Tetikleyicisi' : 'Takım Tetikleyicisi'}
+        </div>
+              </div>
+            `;
+              }
+            }
+            
+            // Rakip eşleşme analizi
+            const matchingResult = findMatchingOpponents(team1LastMatches, team1Surprises, team1Name, matchData);
+            const isMatchingOpponent = matchingResult?.matchingOpponents.includes(opponent);
+            const matchingClass = isMatchingOpponent ? 'ring-2 ring-green-500' : '';
+            
+            return `
+              <div class="p-4 hover:bg-opacity-90 transition-all duration-200">
+                <div class="grid grid-cols-12 gap-4 items-center text-sm">
+                  <div class="col-span-2 font-medium text-gray-600 text-center">
+                    ${convertExcelDate(match.Date)}
+          </div>
+                  <div class="col-span-10 text-gray-800 ${resultBgColor} rounded-lg p-2 text-center shadow-sm relative ${matchingClass}">
+                    ${redCardIcon}
+                    ${triggerWarning}
+                    <div class="flex items-center justify-center gap-3">
+                      <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-full bg-white p-1 shadow-sm">
+                          <img
+                            src="${getTeamLogo(match.HomeTeam)}"
+                            alt="${match.HomeTeam}"
+                            class="w-full h-full object-contain rounded-full"
+                            onerror="this.src='${EMPTY_LOGO}'"
+                          />
+              </div>
+                        <span class="font-medium">${match.HomeTeam}</span>
+              </div>
+                      <span class="font-bold text-lg px-3">${score}</span>
+                      <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-full bg-white p-1 shadow-sm">
+                          <img
+                            src="${getTeamLogo(match.AwayTeam)}"
+                            alt="${match.AwayTeam}"
+                            class="w-full h-full object-contain rounded-full"
+                            onerror="this.src='${EMPTY_LOGO}'"
+                          />
+            </div>
+                        <span class="font-medium">${match.AwayTeam}</span>
+              </div>
+          </div>
+        </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+          ${(() => {
+            const matchingResult = findMatchingOpponents(team1LastMatches, team1Surprises, team1Name, matchData);
+            const headToHeadSurprise = findHeadToHeadSurprises(matchData, team1Name, team2Name);
+            
+            let resultHtml = '';
+            
+            if (matchingResult && matchingResult.matchingCount > 0) {
+              resultHtml += `
+                <div class="p-4 bg-green-50">
+                  <div class="text-center text-green-700 font-medium">
+                    ${matchingResult.matchingCount} Rakip eşleşiyor 
+                    <span class="text-gray-600 ml-2">(Sürpriz Tarihi: ${convertExcelDate(matchingResult.surpriseDate)})</span>
+              </div>
+              </div>
+              `;
+            }
+            
+            if (headToHeadSurprise) {
+              resultHtml += `
+                <div class="p-4 ${matchingResult ? 'bg-blue-50' : 'bg-green-50'}">
+                  <div class="text-center text-blue-700 font-medium">
+                    İki takım arasında sürpriz olmuş
+                    <span class="text-gray-600 ml-2">(Sürpriz Tarihi: ${convertExcelDate(headToHeadSurprise.Date)})</span>
+            </div>
+          </div>
+        `;
+            }
+            
+            return resultHtml;
+          })()}
+        </div>
+      </div>
+    `;
+
+    analysis.team1Analysis.push(lastMatchesHtml);
+  } else {
+    analysis.team1Analysis.push(team1TriggerAnalysis.html);
+  }
+
+  // Aynı işlemi team2 için de yap
+  const team2LastMatches = matchData
+    .filter(m => m.HomeTeam === team2Name || m.AwayTeam === team2Name)
+    .sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime())
+    .slice(0, 3);
+
+  const team2LastMatchesHtml = `
+    <div class="bg-white rounded-lg overflow-hidden shadow-lg border border-gray-200 mt-4">
+      <div class="divide-y divide-gray-100">
+        ${team2LastMatches.map((match, index) => {
+          const isHome = match.HomeTeam === team2Name;
+          const opponent = isHome ? match.AwayTeam : match.HomeTeam;
+          const score = `${match.FTHG}-${match.FTAG}`;
+          
+          let resultBgColor = 'bg-yellow-100';
+          if ((isHome && match.FTR === 'H') || (!isHome && match.FTR === 'A')) {
+            resultBgColor = 'bg-green-100';
+          } else if ((isHome && match.FTR === 'A') || (!isHome && match.FTR === 'H')) {
+            resultBgColor = 'bg-red-100';
+          }
+
+          // Kırmızı kart kontrolü
+          const hasRedCard = match.HR > 0 || match.AR > 0;
+          const redCardIcon = hasRedCard ? `
+            <div class="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center shadow-lg animate-pulse">
+              <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+        </div>
+          ` : '';
+
+          // En son maçtaki rakip için tetikleyici kontrolü
+          let triggerWarning = '';
+          if (index === 0) {
+            const isLeagueTrigger = team2LeagueTrigger?.some(trigger => trigger.team === opponent);
+            const isTeamTrigger = Object.entries(team2TriggerAnalysis.triggerCounts)
+              .some(([team, data]) => team === opponent && data.matches.length >= 2);
+
+            if (isLeagueTrigger || isTeamTrigger) {
+              triggerWarning = `
+                <div class="absolute -top-1 -left-1 group">
+                  <div class="w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center shadow-lg animate-bounce">
+                    <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+        </div>
+                  <div class="absolute left-6 top-0 hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 whitespace-nowrap">
+                    ${isLeagueTrigger ? 'Lig Tetikleyicisi' : 'Takım Tetikleyicisi'}
+              </div>
+              </div>
+              `;
+            }
+          }
+
+          // Rakip eşleşme analizi
+          const matchingResult = findMatchingOpponents(team2LastMatches, team2Surprises, team2Name, matchData);
+          const isMatchingOpponent = matchingResult?.matchingOpponents.includes(opponent);
+          const matchingClass = isMatchingOpponent ? 'ring-2 ring-green-500' : '';
+        
+        return `
+            <div class="p-4 hover:bg-opacity-90 transition-all duration-200">
+              <div class="grid grid-cols-12 gap-4 items-center text-sm">
+                <div class="col-span-2 font-medium text-gray-600 text-center">
+                  ${convertExcelDate(match.Date)}
+            </div>
+                <div class="col-span-10 text-gray-800 ${resultBgColor} rounded-lg p-2 text-center shadow-sm relative ${matchingClass}">
+                  ${redCardIcon}
+                  ${triggerWarning}
+                  <div class="flex items-center justify-center gap-3">
+                    <div class="flex items-center gap-2">
+                      <div class="w-8 h-8 rounded-full bg-white p-1 shadow-sm">
+                        <img
+                          src="${getTeamLogo(match.HomeTeam)}"
+                          alt="${match.HomeTeam}"
+                          class="w-full h-full object-contain rounded-full"
+                          onerror="this.src='${EMPTY_LOGO}'"
+                        />
+            </div>
+                      <span class="font-medium">${match.HomeTeam}</span>
+          </div>
+                    <span class="font-bold text-lg px-3">${score}</span>
+                    <div class="flex items-center gap-2">
+                      <div class="w-8 h-8 rounded-full bg-white p-1 shadow-sm">
+                        <img
+                          src="${getTeamLogo(match.AwayTeam)}"
+                          alt="${match.AwayTeam}"
+                          class="w-full h-full object-contain rounded-full"
+                          onerror="this.src='${EMPTY_LOGO}'"
+                        />
+          </div>
+                      <span class="font-medium">${match.AwayTeam}</span>
+        </div>
+                </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+        ${(() => {
+          const matchingResult = findMatchingOpponents(team2LastMatches, team2Surprises, team2Name, matchData);
+          const headToHeadSurprise = findHeadToHeadSurprises(matchData, team2Name, team1Name);
+          
+          let resultHtml = '';
+          
+          if (matchingResult && matchingResult.matchingCount > 0) {
+            resultHtml += `
+              <div class="p-4 bg-green-50">
+                <div class="text-center text-green-700 font-medium">
+                  ${matchingResult.matchingCount} Rakip eşleşiyor 
+                  <span class="text-gray-600 ml-2">(Sürpriz Tarihi: ${convertExcelDate(matchingResult.surpriseDate)})</span>
+          </div>
+              </div>
+            `;
+          }
+          
+          if (headToHeadSurprise) {
+            resultHtml += `
+              <div class="p-4 ${matchingResult ? 'bg-blue-50' : 'bg-green-50'}">
+                <div class="text-center text-blue-700 font-medium">
+                  İki takım arasında sürpriz olmuş
+                  <span class="text-gray-600 ml-2">(Sürpriz Tarihi: ${convertExcelDate(headToHeadSurprise.Date)})</span>
+            </div>
+          </div>
+            `;
+          }
+          
+          return resultHtml;
+        })()}
+          </div>
+              </div>
+  `;
+
+  analysis.team2Analysis.push(team2TriggerAnalysis.html);
+  analysis.team2Analysis.push(team2LastMatchesHtml);
+
+  return analysis;
+}
+
+// Mevcut analiz fonksiyonunu yeniden adlandıralım
+const findClassicSurpriseMatches = (matches: Match[]) => {
+  return matches.filter(m => {
+    // 2/1 senaryosu: İlk yarı A, maç sonu H
+    const is21Scenario = m.HTR === "A" && m.FTR === "H";
+    // 1/2 senaryosu: İlk yarı H, maç sonu A
+    const is12Scenario = m.HTR === "H" && m.FTR === "A";
+    return is21Scenario || is12Scenario;
+  });
+};
+
+// Yeni beraberlik analiz fonksiyonu
+const findDrawSurpriseMatches = (matches: Match[]) => {
+  const surpriseMatches = matches.filter(m => {
+    // 1/X senaryosu: İlk yarı H, maç sonu D
+    const is1XScenario = m.HTR === "H" && m.FTR === "D";
+    // 2/X senaryosu: İlk yarı A, maç sonu D
+    const is2XScenario = m.HTR === "A" && m.FTR === "D";
+    return is1XScenario || is2XScenario;
+  });
+
+  console.log('[Debug] Draw Mode Analysis:', {
+    totalMatches: matches.length,
+    surpriseMatches: surpriseMatches.length,
+    scenarios: surpriseMatches.map(m => ({
+      date: m.Date,
+      homeTeam: m.HomeTeam,
+      awayTeam: m.AwayTeam,
+      htResult: m.HTR,
+      ftResult: m.FTR,
+      scenario: m.HTR === "H" ? "1/X" : "2/X"
+    }))
+  });
+
+  return surpriseMatches;
+};
+
+// Rakipleri analiz et
+const analyzeSurpriseOpponents = (matches: Match[], teamName: string) => {
+  const opponents: { [key: string]: SurpriseOpponent } = {};
+  
+  matches.forEach(match => {
+    const opponent = match.HomeTeam === teamName ? match.AwayTeam : match.HomeTeam;
+    const isHome = match.HomeTeam === teamName;
+    const score = `${match.FTHG}-${match.FTAG}`;
+    const htScore = `${match.HTHG}-${match.HTAG}`;
+    const formattedDate = convertExcelDate(match.Date);
+    
+    const matchDetails: MatchDetails = {
+      score,
+      htScore,
+      date: formattedDate,
+      opponent,
+      isHome,
+      redCards: match.RC || 0
+    };
+    
+    if (!opponents[opponent]) {
+      opponents[opponent] = {
+        count: 0,
+        lastMatch: matchDetails,
+        allMatches: []
+      };
+    }
+    
+    opponents[opponent].count++;
+    opponents[opponent].allMatches.push(matchDetails);
+    
+    // En son maçı güncelle
+    const lastMatchDate = new Date(opponents[opponent].lastMatch.date.split('.').reverse().join('-'));
+    const currentMatchDate = new Date(formattedDate.split('.').reverse().join('-'));
+    if (currentMatchDate > lastMatchDate) {
+      opponents[opponent].lastMatch = matchDetails;
+    }
+  });
+  
+  return opponents;
+};
+
+// Yeni tip tanımlamaları ekleyelim
+interface SurpriseCalculation {
+  homeTeam: string;
+  awayTeam: string;
+  homeForm?: string[];
+  awayForm?: string[];
+  homeLastMatches?: number;
+  awayLastMatches?: number;
+  // Yeni alanlar
+  homeScores: string[];
+  awayScores: string[];
+  // Oran alanları
+  homeOdds?: number;  // B365CH (Kapanış)
+  awayOdds?: number;  // B365CA (Kapanış)
+  drawOdds?: number;  // B365CD (Kapanış)
+}
+
+interface SurpriseCalculationResult {
+  possibleScenarios: ('1/2' | '2/1' | '1/X' | '2/X')[];
+  confidence: number;
+  explanation: string;
+  warnings?: string[];
+}
+
+// Twitter görsel oluşturucu bileşeni
+const TwitterImageGenerator = ({ calculationResult, calculationData }) => {
+  const canvasRef = useRef(null);
+
+  const generateImage = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    // Canvas boyutları (Twitter için optimize)
+    canvas.width = 1200;
+    canvas.height = 675;
+
+    // Arkaplan
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#4F46E5');
+    gradient.addColorStop(1, '#7C3AED');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Logo ve başlık
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 48px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Sürpriz Analizi', canvas.width / 2, 80);
+
+    // Takım isimleri
+    ctx.font = 'bold 36px Arial';
+    ctx.fillText(`${calculationData.homeTeam} vs ${calculationData.awayTeam}`, canvas.width / 2, 150);
+
+    // Sürpriz potansiyeli
+    ctx.font = 'bold 72px Arial';
+    ctx.fillText(`%${calculationResult.confidence}`, canvas.width / 2, 300);
+    ctx.font = '32px Arial';
+    ctx.fillText('Sürpriz Potansiyeli', canvas.width / 2, 350);
+
+    // En olası senaryo
+    if (calculationResult.possibleScenarios.length > 0) {
+      ctx.font = 'bold 48px Arial';
+      ctx.fillText(calculationResult.possibleScenarios[0], canvas.width / 2, 450);
+      ctx.font = '32px Arial';
+      ctx.fillText('En Olası Senaryo', canvas.width / 2, 500);
+    }
+
+    // Alt bilgi
+    ctx.font = '24px Arial';
+    ctx.fillText('AI-TAHMIN2 | Powered by Cursor', canvas.width / 2, 620);
+
+    return canvas.toDataURL('image/png');
+  };
+
+  const downloadImage = () => {
+    const dataUrl = generateImage();
+    const link = document.createElement('a');
+    link.download = 'surpriz-analizi.png';
+    link.href = dataUrl;
+    link.click();
+  };
+
+  return (
+    <>
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+      <button
+        onClick={downloadImage}
+        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all"
+      >
+        <Image className="w-5 h-5" />
+        Görsel Oluştur
+      </button>
+    </>
+  );
+};
+
+// Rakip eşleşme analizi fonksiyonu
+function findMatchingOpponents(currentMatches: Match[], surpriseMatches: Match[], teamName: string, matchData: Match[]) {
+  const currentOpponents = currentMatches.map(m => 
+    m.HomeTeam === teamName ? m.AwayTeam : m.HomeTeam
+  );
+
+  // Her sürpriz maç için önceki 3 maçı ve rakiplerini bul
+  const matchingResults = surpriseMatches.map(surprise => {
+    const previousMatches = matchData
+      .filter(m => 
+        (m.HomeTeam === teamName || m.AwayTeam === teamName) &&
+        new Date(m.Date) < new Date(surprise.Date)
+      )
+      .sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime())
+      .slice(0, 3);
+
+    const previousOpponents = previousMatches.map(m =>
+      m.HomeTeam === teamName ? m.AwayTeam : m.HomeTeam
+    );
+
+    // Eşleşen rakipleri bul
+    const matchingOpponents = currentOpponents.filter(opponent =>
+      previousOpponents.includes(opponent)
+    );
+
+    return {
+      matchingCount: matchingOpponents.length,
+      matchingOpponents,
+      surpriseDate: surprise.Date
+    };
+  });
+
+  // En çok eşleşen sonucu bul
+  return matchingResults.sort((a, b) => b.matchingCount - a.matchingCount)[0];
+}
+
+// İki takım arası sürpriz kontrolü fonksiyonu
+function findHeadToHeadSurprises(matchData: Match[], team1Name: string, team2Name: string) {
+  return matchData
+    .filter(m => 
+      ((m.HomeTeam === team1Name && m.AwayTeam === team2Name) || 
+       (m.HomeTeam === team2Name && m.AwayTeam === team1Name)) &&
+      ((m.HTR === "H" && m.FTR === "A") || (m.HTR === "A" && m.FTR === "H"))
+    )
+    .sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime())[0];
+}
+
+export default function SpecialAnalysis({ matchData, teamData, selectedMatch }: SpecialAnalysisProps) {
+  const [activeTab, setActiveTab] = useState<'team1' | 'team2'>('team1');
+  const [analysisData, setAnalysisData] = useState<TeamAnalysisData | null>(null);
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState<{ [key: string]: number }>({});
+  const [showDetails, setShowDetails] = useState<{ [key: string]: boolean }>({});
+  const [showLastMatches, setShowLastMatches] = useState(false);
+  const [selectedLeague, setSelectedLeague] = useState<string>('T1');
+  const [selectedTeam1, setSelectedTeam1] = useState<string>('');
+  const [selectedTeam2, setSelectedTeam2] = useState<string>('');
+  const [leagues, setLeagues] = useState<League[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [showTeamSelection, setShowTeamSelection] = useState(false);
+  const lastMatchesRef = useRef<HTMLDivElement>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [analysisMode, setAnalysisMode] = useState<'classic' | 'draw'>('classic');
+  const [activeView, setActiveView] = useState<'analysis' | 'calculation'>('analysis');
+  const [calculationData, setCalculationData] = useState<SurpriseCalculation>({
+    homeTeam: '',
+    awayTeam: '',
+    homeScores: [],
+    awayScores: []
+  });
+  const [calculationResult, setCalculationResult] = useState<SurpriseCalculationResult | null>(null);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // Ligleri yükle
+  useEffect(() => {
+    try {
+      console.log('[Debug] Maç verileri:', matchData.length);
+      
+      // Benzersiz ligleri bul
+      const uniqueLeagues = new Set<string>();
+      matchData.forEach(match => {
+        if (match.Div && LEAGUE_NAMES[match.Div]) {
+          uniqueLeagues.add(match.Div);
+        }
+      });
+
+      console.log('[Debug] Bulunan benzersiz ligler:', Array.from(uniqueLeagues));
+
+      const leagueList: League[] = Array.from(uniqueLeagues)
+        .map(id => ({
+          id,
+          name: LEAGUE_NAMES[id] || id
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      console.log('[Debug] Oluşturulan lig listesi:', leagueList);
+      setLeagues(leagueList);
+      setLoading(false);
+    } catch (error) {
+      console.error('Ligler yüklenirken hata:', error);
+      setError('Ligler yüklenirken bir hata oluştu. Lütfen sayfayı yenileyin.');
+    }
+  }, [matchData]);
+
+  // Seçili lige göre takımları filtrele
+  useEffect(() => {
+    if (selectedLeague) {
+      try {
+        // Seçilen ligdeki tüm takımları bul
+        const leagueMatches = matchData.filter(match => match.Div === selectedLeague);
+        const allTeams = new Set<string>();
+        
+        leagueMatches.forEach(match => {
+          if (match.HomeTeam) allTeams.add(match.HomeTeam);
+          if (match.AwayTeam) allTeams.add(match.AwayTeam);
+        });
+
+        const teamList: Team[] = Array.from(allTeams)
+          .map(name => ({
+            id: name,
+            name,
+            league: selectedLeague
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        console.log(`[Debug] ${selectedLeague} ligi için takım listesi:`, teamList);
+        setTeams(teamList);
+      } catch (error) {
+        console.error('Takımlar yüklenirken hata:', error);
+        setError('Takımlar yüklenirken bir hata oluştu.');
+      }
+    }
+  }, [selectedLeague, matchData]);
+
+  // Rakipleri analiz et
+  const analyzeSurpriseOpponents = (matches: Match[], teamName: string) => {
+    const opponents: { [key: string]: SurpriseOpponent } = {};
+    
+    matches.forEach(match => {
+      const opponent = match.HomeTeam === teamName ? match.AwayTeam : match.HomeTeam;
+      const isHome = match.HomeTeam === teamName;
+      const score = `${match.FTHG}-${match.FTAG}`;
+      const htScore = `${match.HTHG}-${match.HTAG}`;
+      const formattedDate = convertExcelDate(match.Date);
+      
+      const matchDetails: MatchDetails = {
+        score,
+        htScore,
+        date: formattedDate,
+        opponent,
+        isHome,
+        redCards: match.RC || 0
+      };
+      
+      if (!opponents[opponent]) {
+        opponents[opponent] = {
+          count: 0,
+          lastMatch: matchDetails,
+          allMatches: []
+        };
+      }
+      
+      opponents[opponent].count++;
+      opponents[opponent].allMatches.push(matchDetails);
+      
+      // En son maçı güncelle
+      const lastMatchDate = new Date(opponents[opponent].lastMatch.date.split('.').reverse().join('-'));
+      const currentMatchDate = new Date(formattedDate.split('.').reverse().join('-'));
+      if (currentMatchDate > lastMatchDate) {
+        opponents[opponent].lastMatch = matchDetails;
+      }
+    });
+    
+    return opponents;
+  };
+
+  // Takım seçildiğinde analizi güncelle
+  useEffect(() => {
+    const updateTeamAnalysis = (teamName: string) => {
+      if (!teamName) return null;
+
+      // Seçilen takımın tüm maçlarını filtrele
+      const teamMatches = matchData.filter(m => 
+        m.HomeTeam === teamName || m.AwayTeam === teamName
+      );
+
+      // Seçilen moda göre analiz fonksiyonunu belirle
+      const findSurpriseMatches = analysisMode === 'classic' 
+        ? findClassicSurpriseMatches 
+        : findDrawSurpriseMatches;
+
+      // Sürpriz senaryoları bul
+      const surpriseMatches = findSurpriseMatches(teamMatches);
+
+      console.log(`[Debug] ${teamName} Analysis:`, {
+        mode: analysisMode,
+        totalMatches: teamMatches.length,
+        surpriseMatches: surpriseMatches.length,
+        scenarios: surpriseMatches.map(m => ({
+          date: m.Date,
+          homeTeam: m.HomeTeam,
+          awayTeam: m.AwayTeam,
+          htResult: m.HTR,
+          ftResult: m.FTR,
+          scenario: analysisMode === 'draw' ? (m.HTR === "H" ? "1/X" : "2/X") : (m.HTR === "A" ? "2/1" : "1/2")
+        }))
+      });
+
+      return {
+        surpriseOpponents: analyzeSurpriseOpponents(surpriseMatches, teamName),
+        preSurpriseScores: analyzePreSurpriseScores(teamMatches, surpriseMatches),
+        redCardImpact: analyzeRedCardImpact(surpriseMatches),
+        lastThreeMatches: surpriseMatches.slice(0, 3).map(m => ({
+          score: `${m.FTHG}-${m.FTAG}`,
+          htScore: `${m.HTHG}-${m.HTAG}`,
+          date: convertExcelDate(m.Date),
+          opponent: m.HomeTeam === teamName ? m.AwayTeam : m.HomeTeam,
+          isHome: m.HomeTeam === teamName,
+          redCards: m.RC || 0
+        }))
+      };
+    };
+
+    const team1Analysis = updateTeamAnalysis(selectedTeam1);
+    const team2Analysis = updateTeamAnalysis(selectedTeam2);
+
+    if (team1Analysis || team2Analysis) {
+      setAnalysisData({
+        homeTeam: team1Analysis || {
+          surpriseOpponents: {},
+          preSurpriseScores: {},
+          redCardImpact: {},
+          lastThreeMatches: []
+        },
+        awayTeam: team2Analysis || {
+          surpriseOpponents: {},
+          preSurpriseScores: {},
+          redCardImpact: {},
+          lastThreeMatches: []
+        },
+        similarOddsMatches: [],
+        aiAnalysis: createAIAnalysis(
+          team1Analysis ? (analysisMode === 'classic' ? findClassicSurpriseMatches : findDrawSurpriseMatches)(matchData.filter(m => m.HomeTeam === selectedTeam1 || m.AwayTeam === selectedTeam1)) : [],
+          team2Analysis ? (analysisMode === 'classic' ? findClassicSurpriseMatches : findDrawSurpriseMatches)(matchData.filter(m => m.HomeTeam === selectedTeam2 || m.AwayTeam === selectedTeam2)) : [],
+          team1Analysis?.preSurpriseScores || {},
+          team2Analysis?.preSurpriseScores || {},
+          selectedTeam1,
+          selectedTeam2,
+          matchData
+        )
+      });
+    }
+  }, [selectedTeam1, selectedTeam2, matchData, analysisMode]);
+
+  // Seçilen maç değiştiğinde hesaplama verilerini güncelle
+  useEffect(() => {
+    if (selectedMatch) {
+      setCalculationData(prev => ({
+        ...prev,
+        homeTeam: selectedMatch.HomeTeam,
+        awayTeam: selectedMatch.AwayTeam,
+        homeOdds: selectedMatch.B365CH,  // Kapanış oranı
+        drawOdds: selectedMatch.B365CD,   // Kapanış oranı
+        awayOdds: selectedMatch.B365CA    // Kapanış oranı
+      }));
+    }
+  }, [selectedMatch]);
+
+  // Kompakt takım seçim arayüzü
+  const renderTeamSelectionCompact = () => (
+    <div className={`bg-white/90 backdrop-blur-sm p-4 rounded-lg shadow-lg transition-all duration-300 z-50 ${
+      showTeamSelection ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
+    }`}>
+      <div className="grid grid-cols-3 gap-4 items-center">
+        <div className="relative z-50">
+          <select
+            className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+            value={selectedLeague}
+            onChange={(e) => {
+              setSelectedLeague(e.target.value);
+              setSelectedTeam1('');
+              setSelectedTeam2('');
+            }}
+          >
+            <option value="">Lig Seçin</option>
+            {leagues.map(league => (
+              <option key={league.id} value={league.id}>
+                {league.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        
+        <div className="relative z-50">
+          <select
+            className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+            value={selectedTeam1}
+            onChange={(e) => setSelectedTeam1(e.target.value)}
+            disabled={!selectedLeague}
+          >
+            <option value="">Takım 1</option>
+            {teams.map(team => (
+              <option key={`team1-${team.id}`} value={team.name}>
+                {team.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="relative z-50">
+          <select
+            className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+            value={selectedTeam2}
+            onChange={(e) => setSelectedTeam2(e.target.value)}
+            disabled={!selectedLeague}
+          >
+            <option value="">Takım 2</option>
+            {teams.map(team => (
+              <option key={`team2-${team.id}`} value={team.name}>
+                {team.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Sürpriz hesaplama fonksiyonu
+  const calculateSurprisePotential = (data: SurpriseCalculation): SurpriseCalculationResult => {
+    const result: SurpriseCalculationResult = {
+      possibleScenarios: [],
+      confidence: 0,
+      explanation: '',
+      warnings: []
+    };
+
+    // Oranları analiz et
+    if (data.homeOdds && data.awayOdds && data.drawOdds) {
+      // Toplam oran analizi
+      const totalOdds = data.homeOdds + data.awayOdds + data.drawOdds;
+      
+      // Favori takımı belirle
+      const isFavoriteHome = data.homeOdds < data.awayOdds;
+      const favoriteOdd = Math.min(data.homeOdds, data.awayOdds);
+      
+      // Favori takımın oranı yüksekse sürpriz potansiyeli artar
+      if (favoriteOdd > 2.0) {
+        result.confidence += 15;
+        result.explanation += "Favori takımın oranı yüksek, sürpriz potansiyeli artıyor. ";
+      }
+
+      // Beraberlik oranı analizi
+      if (data.drawOdds < 3.5) {
+        result.confidence += 10;
+        result.explanation += "Düşük beraberlik oranı, beraberlikle bitme potansiyeli yüksek. ";
+      }
+
+      // Dengesiz oranlar analizi
+      const oddsDifference = Math.abs(data.homeOdds - data.awayOdds);
+      if (oddsDifference > 1.5) {
+        result.confidence += 20;
+        result.explanation += "Takımlar arası oran farkı yüksek, sürpriz potansiyeli artıyor. ";
+      }
+    }
+
+    // Mevcut analizler devam ediyor...
+    const homeTeamMatches = matchData.filter(m => 
+      m.HomeTeam === data.homeTeam || m.AwayTeam === data.homeTeam
+    );
+    const awayTeamMatches = matchData.filter(m => 
+      m.HomeTeam === data.awayTeam || m.AwayTeam === data.awayTeam
+    );
+
+    // Her iki takımın sürpriz istatistiklerini hesapla
+    const homeClassicSurprises = findClassicSurpriseMatches(homeTeamMatches);
+    const homeDrawSurprises = findDrawSurpriseMatches(homeTeamMatches);
+    const awayClassicSurprises = findClassicSurpriseMatches(awayTeamMatches);
+    const awayDrawSurprises = findDrawSurpriseMatches(awayTeamMatches);
+
+    // Gol ortalamaları analizi
+    if (data.homeScores.length > 0 && data.awayScores.length > 0) {
+      const totalGoals = data.homeScores.length + data.awayScores.length;
+      if (totalGoals > 4) {
+        result.confidence += 15;
+        result.explanation += "Her iki takımın da gol ortalaması yüksek, sürpriz potansiyeli artıyor. ";
+      } else if (totalGoals < 2) {
+        result.confidence -= 10;
+        result.warnings?.push("Düşük gol ortalamaları sürpriz ihtimalini azaltabilir.");
+      }
+    }
+
+    // Yenilen gol ortalamaları analizi
+    if (data.homeScores.length > 0 && data.awayScores.length > 0) {
+      const totalConceded = data.homeScores.length + data.awayScores.length;
+      if (totalConceded > 3) {
+        result.confidence += 20;
+        result.explanation += "Savunma zaafiyetleri sürpriz potansiyelini artırıyor. ";
+      }
+    }
+
+    // Form analizi
+    if (data.homeForm && data.homeForm.length > 0) {
+      const homeWins = data.homeForm.filter(r => r === 'G').length;
+      const homeLosses = data.homeForm.filter(r => r === 'M').length;
+      if (homeWins >= 2) {
+        result.confidence += 10;
+        result.explanation += "Ev sahibi iyi formda. ";
+      } else if (homeLosses >= 2) {
+        result.confidence += 15;
+        result.explanation += "Ev sahibinin kötü formu sürpriz potansiyelini artırıyor. ";
+      }
+    }
+
+    // Sürpriz senaryolarını belirle
+    if (homeClassicSurprises.length > awayClassicSurprises.length) {
+      result.possibleScenarios.push('2/1');
+      result.confidence += 15;
+    }
+    if (awayClassicSurprises.length > homeClassicSurprises.length) {
+      result.possibleScenarios.push('1/2');
+      result.confidence += 15;
+    }
+    if (homeDrawSurprises.length > 0) {
+      result.possibleScenarios.push('1/X');
+      result.confidence += 10;
+    }
+    if (awayDrawSurprises.length > 0) {
+      result.possibleScenarios.push('2/X');
+      result.confidence += 10;
+    }
+
+    // Son maçları kontrol et
+    if (data.homeLastMatches && data.homeLastMatches > 2) {
+      result.confidence -= 10;
+      result.warnings?.push("Ev sahibi son maçlarda çok fazla sürpriz yaptı, dikkatli olun.");
+    }
+    if (data.awayLastMatches && data.awayLastMatches > 2) {
+      result.confidence -= 10;
+      result.warnings?.push("Deplasman takımı son maçlarda çok fazla sürpriz yaptı, dikkatli olun.");
+    }
+
+    // Sonuçları normalize et
+    result.confidence = Math.max(0, Math.min(100, result.confidence));
+    
+    if (result.confidence < 30) {
+      result.explanation = "Bu maçta sürpriz potansiyeli oldukça düşük görünüyor. " + result.explanation;
+    } else if (result.confidence > 70) {
+      result.explanation = "Bu maçta yüksek sürpriz potansiyeli var! " + result.explanation;
+    } else {
+      result.explanation = "Bu maçta orta seviyede sürpriz potansiyeli var. " + result.explanation;
+    }
+
+    return result;
+  };
+
+  // Skor seçenekleri için sabit tanımlamalar
+  const SCORE_OPTIONS = {
+    lowScoring: [
+      '0-0', '0-1', '1-0', '1-1',
+      '0-2', '2-0'
+    ],
+    mediumScoring: [
+      '2-1', '1-2', '2-2',
+      '3-0', '0-3', '3-1', '1-3'
+    ],
+    highScoring: [
+      '3-2', '2-3', '3-3',
+      '4-0', '0-4', '4-1', '1-4',
+      '4-2', '2-4', '4-3', '3-4'
+    ]
+  };
+
+  // Lig seçimi için bileşen
+  const LeagueSelector = ({ selectedLeague, onLeagueChange }) => (
+    <div className="mb-6">
+      <label className="block text-sm font-medium text-gray-700 mb-1">Lig Seçin</label>
+      <select
+        className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+        value={selectedLeague}
+        onChange={(e) => onLeagueChange(e.target.value)}
+      >
+        <option value="">Lig Seçin</option>
+        {Object.entries(LEAGUE_NAMES).map(([id, name]) => (
+          <option key={id} value={id}>{name}</option>
+        ))}
+      </select>
+    </div>
+  );
+
+  // Skor seçici bileşeni
+  const ScoreSelector = ({ onScoreSelect, selectedScores = [], onScoreRemove }) => {
+    const [activeMenu, setActiveMenu] = useState(null);
+    const menuRef = useRef(null);
+
+    // Menü dışına tıklandığında menüyü kapat
+    useEffect(() => {
+      const handleClickOutside = (event) => {
+        if (menuRef.current && !menuRef.current.contains(event.target)) {
+          setActiveMenu(null);
+        }
+      };
+
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    return (
+      <div className="space-y-2" ref={menuRef}>
+        <div className="flex flex-wrap gap-2">
+          {/* Düşük Skorlar */}
+          <div className="relative">
+            <button
+              onClick={() => setActiveMenu(activeMenu === 'low' ? null : 'low')}
+              className={`px-3 py-1 ${
+                activeMenu === 'low' 
+                  ? 'bg-blue-100 text-blue-700' 
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              } rounded-md text-sm transition-colors`}
+            >
+              Düşük Skorlar
+            </button>
+            {activeMenu === 'low' && (
+              <div className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg p-2 flex flex-wrap gap-1 z-50 w-48">
+                {SCORE_OPTIONS.lowScoring.map(score => (
+                  <button
+                    key={score}
+                    onClick={() => {
+                      onScoreSelect(score);
+                      setActiveMenu(null);
+                    }}
+                    className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded text-xs"
+                  >
+                    {score}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Orta Skorlar */}
+          <div className="relative">
+            <button
+              onClick={() => setActiveMenu(activeMenu === 'medium' ? null : 'medium')}
+              className={`px-3 py-1 ${
+                activeMenu === 'medium' 
+                  ? 'bg-green-100 text-green-700' 
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              } rounded-md text-sm transition-colors`}
+            >
+              Orta Skorlar
+            </button>
+            {activeMenu === 'medium' && (
+              <div className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg p-2 flex flex-wrap gap-1 z-50 w-48">
+                {SCORE_OPTIONS.mediumScoring.map(score => (
+                  <button
+                    key={score}
+                    onClick={() => {
+                      onScoreSelect(score);
+                      setActiveMenu(null);
+                    }}
+                    className="px-2 py-1 bg-green-50 hover:bg-green-100 text-green-600 rounded text-xs"
+                  >
+                    {score}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Yüksek Skorlar */}
+          <div className="relative">
+            <button
+              onClick={() => setActiveMenu(activeMenu === 'high' ? null : 'high')}
+              className={`px-3 py-1 ${
+                activeMenu === 'high' 
+                  ? 'bg-purple-100 text-purple-700' 
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              } rounded-md text-sm transition-colors`}
+            >
+              Yüksek Skorlar
+            </button>
+            {activeMenu === 'high' && (
+              <div className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg p-2 flex flex-wrap gap-1 z-50 w-48">
+                {SCORE_OPTIONS.highScoring.map(score => (
+                  <button
+                    key={score}
+                    onClick={() => {
+                      onScoreSelect(score);
+                      setActiveMenu(null);
+                    }}
+                    className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded text-xs"
+                  >
+                    {score}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {selectedScores.length > 0 && (
+          <div className="mt-3">
+            <div className="text-sm text-gray-500 mb-2">Seçilen Skorlar:</div>
+            <div className="flex flex-wrap gap-2">
+              {selectedScores.map((score, index) => (
+                <div
+                  key={index}
+                  className="relative group"
+                >
+                  <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md">
+                    <span className="text-sm text-gray-700">{score}</span>
+                    <button
+                      onClick={() => onScoreRemove(index)}
+                      className="text-gray-400 hover:text-red-500"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                    {index === 0 ? 'En Eski Maç' : index === 1 ? 'Orta Maç' : 'En Yeni Maç'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Hesaplama sekmesi render fonksiyonu
+  const renderCalculationTab = () => (
+    <div className="p-6 space-y-6">
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <Brain className="text-purple-500" size={24} />
+            <h3 className="text-xl font-bold text-gray-800">Sürpriz Hesaplama</h3>
+          </div>
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className={`p-2 rounded-lg transition-colors ${
+              isDarkMode 
+                ? 'bg-gray-800 text-yellow-400 hover:bg-gray-700' 
+                : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+            }`}
+          >
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+        </div>
+
+        {/* Lig Seçici */}
+        <LeagueSelector
+          selectedLeague={selectedLeague}
+          onLeagueChange={setSelectedLeague}
+        />
+
+        <div className="grid grid-cols-2 gap-6">
+          {/* Sol Panel - Veri Girişi */}
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ev Sahibi</label>
+                <select
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                  value={calculationData.homeTeam}
+                  onChange={(e) => setCalculationData(prev => ({
+                    ...prev,
+                    homeTeam: e.target.value
+                  }))}
+                >
+                  <option value="">Takım Seçin</option>
+                  {teams.map(team => (
+                    <option key={team.id} value={team.name}>{team.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Deplasman</label>
+                <select
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                  value={calculationData.awayTeam}
+                  onChange={(e) => setCalculationData(prev => ({
+                    ...prev,
+                    awayTeam: e.target.value
+                  }))}
+                >
+                  <option value="">Takım Seçin</option>
+                  {teams.map(team => (
+                    <option key={team.id} value={team.name}>{team.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 mt-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Ev Sahibi Oranı (Bet365 Kapanış)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                  value={calculationData.homeOdds || ''}
+                  onChange={(e) => setCalculationData(prev => ({
+                    ...prev,
+                    homeOdds: parseFloat(e.target.value)
+                  }))}
+                  placeholder="Örn: 1.85"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Beraberlik Oranı (Bet365 Kapanış)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                  value={calculationData.drawOdds || ''}
+                  onChange={(e) => setCalculationData(prev => ({
+                    ...prev,
+                    drawOdds: parseFloat(e.target.value)
+                  }))}
+                  placeholder="Örn: 3.40"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Deplasman Oranı (Bet365 Kapanış)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                  value={calculationData.awayOdds || ''}
+                  onChange={(e) => setCalculationData(prev => ({
+                    ...prev,
+                    awayOdds: parseFloat(e.target.value)
+                  }))}
+                  placeholder="Örn: 4.20"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700">Son 3 Maç Skorları (Ev)</label>
+                {calculationData.homeScores && calculationData.homeScores.length > 0 && (
+                  <button
+                    onClick={() => setCalculationData(prev => ({ ...prev, homeScores: [] }))}
+                    className="text-xs text-red-500 hover:text-red-600"
+                  >
+                    Sıfırla
+                  </button>
+                )}
+              </div>
+              <ScoreSelector
+                onScoreSelect={(score) => {
+                  setCalculationData(prev => ({
+                    ...prev,
+                    homeScores: [...(prev.homeScores || []), score].slice(-3)
+                  }));
+                }}
+                selectedScores={calculationData.homeScores}
+                onScoreRemove={(index) => {
+                  setCalculationData(prev => ({
+                    ...prev,
+                    homeScores: prev.homeScores.filter((_, i) => i !== index)
+                  }));
+                }}
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700">Son 3 Maç Skorları (Dep)</label>
+                {calculationData.awayScores && calculationData.awayScores.length > 0 && (
+                  <button
+                    onClick={() => setCalculationData(prev => ({ ...prev, awayScores: [] }))}
+                    className="text-xs text-red-500 hover:text-red-600"
+                  >
+                    Sıfırla
+                  </button>
+                )}
+              </div>
+              <ScoreSelector
+                onScoreSelect={(score) => {
+                  setCalculationData(prev => ({
+                    ...prev,
+                    awayScores: [...(prev.awayScores || []), score].slice(-3)
+                  }));
+                }}
+                selectedScores={calculationData.awayScores}
+                onScoreRemove={(index) => {
+                  setCalculationData(prev => ({
+                    ...prev,
+                    awayScores: prev.awayScores.filter((_, i) => i !== index)
+                  }));
+                }}
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700">Son 3 Maç Formu (Ev)</label>
+                {calculationData.homeForm && calculationData.homeForm.length > 0 && (
+                  <button
+                    onClick={() => setCalculationData(prev => ({ ...prev, homeForm: [] }))}
+                    className="text-xs text-red-500 hover:text-red-600"
+                  >
+                    Sıfırla
+                  </button>
+                )}
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex gap-2 mb-3">
+                  {['G', 'B', 'M'].map((result) => (
+                    <button
+                      key={result}
+                      onClick={() => setCalculationData(prev => ({
+                        ...prev,
+                        homeForm: [...(prev.homeForm || []), result].slice(-3)
+                      }))}
+                      className={`w-10 h-10 rounded-full font-bold ${
+                        result === 'G' ? 'bg-green-100 text-green-600 hover:bg-green-200' :
+                        result === 'B' ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200' :
+                        'bg-red-100 text-red-600 hover:bg-red-200'
+                      } transition-colors`}
+                    >
+                      {result}
+                    </button>
+                  ))}
+                </div>
+                {calculationData.homeForm && calculationData.homeForm.length > 0 && (
+                  <div className="mt-4">
+                    <div className="flex gap-2">
+                      {calculationData.homeForm.map((result, idx) => (
+                        <div key={idx} className="relative group">
+                          <span
+                            className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                              result === 'G' ? 'bg-green-100 text-green-600' :
+                              result === 'B' ? 'bg-yellow-100 text-yellow-600' :
+                              'bg-red-100 text-red-600'
+                            }`}
+                          >
+                            {result}
+                          </span>
+                          <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                            {idx === 0 ? 'En Eski Maç' : idx === 1 ? 'Orta Maç' : 'En Yeni Maç'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700">Son 3 Maç Formu (Dep)</label>
+                {calculationData.awayForm && calculationData.awayForm.length > 0 && (
+                  <button
+                    onClick={() => setCalculationData(prev => ({ ...prev, awayForm: [] }))}
+                    className="text-xs text-red-500 hover:text-red-600"
+                  >
+                    Sıfırla
+                  </button>
+                )}
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex gap-2 mb-3">
+                  {['G', 'B', 'M'].map((result) => (
+                    <button
+                      key={result}
+                      onClick={() => setCalculationData(prev => ({
+                        ...prev,
+                        awayForm: [...(prev.awayForm || []), result].slice(-3)
+                      }))}
+                      className={`w-10 h-10 rounded-full font-bold ${
+                        result === 'G' ? 'bg-green-100 text-green-600 hover:bg-green-200' :
+                        result === 'B' ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200' :
+                        'bg-red-100 text-red-600 hover:bg-red-200'
+                      } transition-colors`}
+                    >
+                      {result}
+                    </button>
+                  ))}
+                </div>
+                {calculationData.awayForm && calculationData.awayForm.length > 0 && (
+                  <div className="mt-4">
+                    <div className="flex gap-2">
+                      {calculationData.awayForm.map((result, idx) => (
+                        <div key={idx} className="relative group">
+                          <span
+                            className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                              result === 'G' ? 'bg-green-100 text-green-600' :
+                              result === 'B' ? 'bg-yellow-100 text-yellow-600' :
+                              'bg-red-100 text-red-600'
+                            }`}
+                          >
+                            {result}
+                          </span>
+                          <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                            {idx === 0 ? 'En Eski Maç' : idx === 1 ? 'Orta Maç' : 'En Yeni Maç'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCalculationResult(calculateSurprisePotential(calculationData))}
+                className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 transition-all"
+              >
+                Sürpriz Potansiyelini Hesapla
+              </button>
+              
+              <button
+                onClick={() => {
+                  setCalculationData({
+                    homeTeam: '',
+                    awayTeam: '',
+                    homeScores: [],
+                    awayScores: [],
+                    homeForm: [],
+                    awayForm: [],
+                    homeOdds: undefined,
+                    awayOdds: undefined,
+                    drawOdds: undefined
+                  });
+                  setCalculationResult(null);
+                }}
+                className="px-4 py-3 bg-gray-100 text-gray-600 rounded-lg font-medium hover:bg-gray-200 transition-all"
+              >
+                Sıfırla
+              </button>
+            </div>
+          </div>
+
+          {/* Sağ Panel - Sonuçlar */}
+          <div className={`${
+            isDarkMode 
+              ? 'bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900 text-white' 
+              : 'bg-gradient-to-br from-gray-50 via-purple-50 to-blue-50'
+          } rounded-xl p-6 shadow-lg transition-colors duration-300`}>
+            {calculationResult ? (
+              <div className="space-y-6" id="result-section">
+                {/* Takım Logoları ve VS */}
+                <div className={`flex items-center justify-center gap-6 ${
+                  isDarkMode ? 'bg-gray-800/50' : 'bg-white/50'
+                } p-6 rounded-xl backdrop-blur-sm`}>
+                  <div className="text-center transform hover:scale-105 transition-transform">
+                    <div className={`${
+                      isDarkMode ? 'bg-gradient-to-br from-purple-900 to-gray-800' : 'bg-gradient-to-br from-purple-100 to-white'
+                    } p-4 rounded-2xl shadow-md`}>
+                      <TeamLogo name={calculationData.homeTeam} className="w-24 h-24" />
+                    </div>
+                    <div className={`mt-3 font-bold ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>
+                      {calculationData.homeTeam}
+                    </div>
+                    <div className={`mt-1 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                      Ev Sahibi
+                    </div>
+                    <div className="mt-2 text-lg font-semibold text-blue-500 blur-sm">
+                      {calculationData.homeOdds?.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg transform hover:scale-110 transition-transform">
+                      VS
+                    </div>
+                    <div className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-500'} blur-sm`}>
+                      Beraberlik: {calculationData.drawOdds?.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="text-center transform hover:scale-105 transition-transform">
+                    <div className={`${
+                      isDarkMode ? 'bg-gradient-to-br from-blue-900 to-gray-800' : 'bg-gradient-to-br from-blue-100 to-white'
+                    } p-4 rounded-2xl shadow-md`}>
+                      <TeamLogo name={calculationData.awayTeam} className="w-24 h-24" />
+                    </div>
+                    <div className={`mt-3 font-bold ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>
+                      {calculationData.awayTeam}
+                    </div>
+                    <div className={`mt-1 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                      Deplasman
+                    </div>
+                    <div className="mt-2 text-lg font-semibold text-purple-500 blur-sm">
+                      {calculationData.awayOdds?.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sürpriz Potansiyeli */}
+                <div className={`${
+                  isDarkMode ? 'bg-gray-800/70' : 'bg-white/70'
+                } backdrop-blur-sm rounded-xl p-6 shadow-lg border ${
+                  isDarkMode ? 'border-purple-800' : 'border-purple-100'
+                }`}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">
+                      Sürpriz Potansiyeli
+                    </h4>
+                    <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">
+                      %{calculationResult.confidence}
+                    </div>
+                  </div>
+                  <div className={`relative h-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'} rounded-full overflow-hidden`}>
+                    <div
+                      className={`absolute top-0 left-0 h-full rounded-full transition-all duration-1000 ${
+                        calculationResult.confidence > 70 
+                          ? 'bg-gradient-to-r from-green-500 to-emerald-500' 
+                          : calculationResult.confidence > 30 
+                            ? 'bg-gradient-to-r from-yellow-500 to-orange-500'
+                            : 'bg-gradient-to-r from-red-500 to-rose-500'
+                      }`}
+                      style={{ width: `${calculationResult.confidence}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* En Olası Senaryolar */}
+                <div className={`${
+                  isDarkMode ? 'bg-gray-800/70' : 'bg-white/70'
+                } backdrop-blur-sm rounded-xl p-6 shadow-lg border ${
+                  isDarkMode ? 'border-blue-800' : 'border-blue-100'
+                }`}>
+                  <h4 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400 mb-4">
+                    Olası Senaryolar
+                  </h4>
+                  <div className="space-y-4">
+                    {calculationResult.possibleScenarios.map((scenario, index) => {
+                      const confidence = Math.max(0, calculationResult.confidence - (index * 15));
+                      return (
+                        <div key={index} className="relative">
+                          <div className={`flex items-center justify-between ${
+                            isDarkMode ? 'bg-gradient-to-r from-gray-800 to-blue-900' : 'bg-gradient-to-r from-gray-50 to-blue-50'
+                          } p-4 rounded-xl`}>
+                            <div className="flex items-center gap-4">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                                index === 0 
+                                  ? 'bg-gradient-to-br from-purple-600 to-blue-600 text-white'
+                                  : isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                #{index + 1}
+                              </div>
+                              <div>
+                                <div className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>
+                                  {scenario}
+                                </div>
+                                <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                  {index === 0 ? 'En Olası Senaryo' : `Alternatif Senaryo ${index}`}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-300 to-blue-300">
+                              %{confidence}
+                            </div>
+                          </div>
+                          <div 
+                            className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full transition-all"
+                            style={{ width: `${confidence}%` }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Analiz */}
+                <div className={`${
+                  isDarkMode ? 'bg-gray-800/70' : 'bg-white/70'
+                } backdrop-blur-sm rounded-xl p-6 shadow-lg border ${
+                  isDarkMode ? 'border-purple-800' : 'border-purple-100'
+                }`}>
+                  <h4 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400 mb-4">
+                    Detaylı Analiz
+                  </h4>
+                  <div className="prose prose-blue max-w-none">
+                    <p className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
+                      {calculationResult.explanation}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Uyarılar */}
+                {calculationResult.warnings && calculationResult.warnings.length > 0 && (
+                  <div className={`${
+                    isDarkMode ? 'bg-gray-800/70' : 'bg-white/70'
+                  } backdrop-blur-sm rounded-xl p-6 shadow-lg border ${
+                    isDarkMode ? 'border-yellow-800' : 'border-yellow-100'
+                  }`}>
+                    <h4 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-red-400 mb-4">
+                      Önemli Uyarılar
+                    </h4>
+                    <div className="space-y-3">
+                      {calculationResult.warnings.map((warning, idx) => (
+                        <div key={idx} className={`flex items-center gap-3 ${
+                          isDarkMode ? 'bg-yellow-900/30 text-yellow-300' : 'bg-gradient-to-r from-yellow-50 to-orange-50 text-yellow-700'
+                        } p-4 rounded-xl`}>
+                          <AlertTriangle className={isDarkMode ? 'text-yellow-400' : 'text-yellow-500'} size={24} />
+                          <span className="text-sm">{warning}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Ekran Görüntüsü Alma Butonu */}
+                <div className={`${
+                  isDarkMode ? 'bg-gray-800/70' : 'bg-white/70'
+                } backdrop-blur-sm rounded-xl p-6 shadow-lg border ${
+                  isDarkMode ? 'border-blue-800' : 'border-blue-100'
+                }`} data-screenshot-section>
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
+                      Ekran Görüntüsü
+                    </h4>
+                    <button
+                      onClick={() => {
+                        const resultSection = document.getElementById('result-section');
+                        if (resultSection) {
+                          // Ekran görüntüsü al butonunu gizle
+                          const screenshotButton = resultSection.querySelector('[data-screenshot-section]');
+                          if (screenshotButton) {
+                            screenshotButton.classList.add('hidden');
+                          }
+
+                          html2canvas(resultSection, {
+                            backgroundColor: isDarkMode ? '#1a1a1a' : '#ffffff',
+                            scale: 2,
+                            logging: false,
+                            useCORS: true,
+                            allowTaint: true,
+                            onclone: (clonedDoc) => {
+                              // Klonlanmış DOM'da blur efektlerini kaldır
+                              const blurredElements = clonedDoc.querySelectorAll('.blur-sm, .blur-md, .blur-lg');
+                              blurredElements.forEach(el => {
+                                el.classList.remove('blur-sm', 'blur-md', 'blur-lg');
+                              });
+                            }
+                          }).then(canvas => {
+                            const image = canvas.toDataURL('image/png');
+                            const link = document.createElement('a');
+                            link.download = 'surpriz-analizi.png';
+                            link.href = image;
+                            link.click();
+
+                            // Ekran görüntüsü al butonunu tekrar göster
+                            if (screenshotButton) {
+                              screenshotButton.classList.remove('hidden');
+                            }
+                          });
+                        }
+                      }}
+                      className={`flex items-center gap-2 px-4 py-2 ${
+                        isDarkMode 
+                          ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700' 
+                          : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600'
+                      } text-white rounded-lg transition-all`}
+                    >
+                      <Image className="w-5 h-5" />
+                      Ekran Görüntüsü Al
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="h-full flex items-center justify-center text-gray-400">
+                <p>Hesaplama sonuçları burada görünecek</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl w-full overflow-hidden flex flex-col">
+      {/* Header */}
+      <div className="p-6 border-b bg-gradient-to-r from-purple-600 to-blue-600 relative">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Sparkles className="text-white" size={24} />
+            <h2 className="text-2xl font-bold text-white">Özel Analiz</h2>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4 bg-white/10 p-2 rounded-lg">
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
+                  analysisMode === 'classic' ? 'bg-white/20 text-white' : 'text-white/60 hover:text-white/80'
+                }`}>
+                  <Trophy size={16} className={analysisMode === 'classic' ? 'text-yellow-300' : 'text-white/60'} />
+                  <span className="text-sm font-medium">2/1 - 1/2</span>
+                </div>
+                <button
+                  onClick={() => setAnalysisMode(prev => prev === 'classic' ? 'draw' : 'classic')}
+                  className={`relative w-14 h-7 rounded-full p-1 transition-colors ${
+                    analysisMode === 'draw' ? 'bg-green-500/50' : 'bg-white/20'
+                  } hover:bg-opacity-75`}
+                >
+                  <div
+                    className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-300 ${
+                      analysisMode === 'draw' ? 'translate-x-7' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
+                  analysisMode === 'draw' ? 'bg-green-500/30 text-white' : 'text-white/60 hover:text-white/80'
+                }`}>
+                  <Scale size={16} className={analysisMode === 'draw' ? 'text-green-300' : 'text-white/60'} />
+                  <span className="text-sm font-medium">1/X - 2/X</span>
+                </div>
+              </div>
+            </div>
+            <div className="h-8 w-px bg-white/20"></div>
+            <button
+              onClick={() => setActiveView('analysis')}
+              className={`px-4 py-2 rounded-lg transition-all ${
+                activeView === 'analysis'
+                  ? 'bg-white text-blue-600'
+                  : 'text-white/80 hover:text-white'
+              }`}
+            >
+              Analiz
+            </button>
+            <button
+              onClick={() => setActiveView('calculation')}
+              className={`px-4 py-2 rounded-lg transition-all ${
+                activeView === 'calculation'
+                  ? 'bg-white text-blue-600'
+                  : 'text-white/80 hover:text-white'
+              }`}
+            >
+              Sürpriz Hesaplama
+            </button>
+          </div>
+        </div>
+
+        {activeView === 'analysis' && (
+          <>
+            <div className="mt-4 flex items-center justify-between text-white/90">
+              <div className="flex items-center gap-6">
+                <button
+                  onClick={() => setActiveTab('team1')}
+                  className={`flex flex-col items-center transition-all ${
+                    activeTab === 'team1' ? 'scale-110' : 'opacity-70 hover:opacity-100'
+                  }`}
+                >
+                  <TeamLogo name={selectedTeam1} className="w-16 h-16" />
+                  <span className="mt-2 font-medium">{selectedTeam1}</span>
+                </button>
+                <span className="text-2xl font-bold">ve</span>
+                <button
+                  onClick={() => setActiveTab('team2')}
+                  className={`flex flex-col items-center transition-all ${
+                    activeTab === 'team2' ? 'scale-110' : 'opacity-70 hover:opacity-100'
+                  }`}
+                >
+                  <TeamLogo name={selectedTeam2} className="w-16 h-16" />
+                  <span className="mt-2 font-medium">{selectedTeam2}</span>
+                </button>
+              </div>
+              <div className="text-right">
+                <button
+                  onClick={() => setShowTeamSelection(prev => !prev)}
+                  className="text-white/80 hover:text-white transition-colors"
+                >
+                  {showTeamSelection ? 'Seçimi Gizle' : 'Takımları Değiştir'}
+                </button>
+              </div>
+            </div>
+            <div className="absolute left-0 right-0 top-full z-[100] px-6 py-4">
+              {renderTeamSelectionCompact()}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Content */}
+      {activeView === 'analysis' ? (
+        <div className="flex-1">
+          <div className="grid grid-cols-2 gap-6 p-6">
+            {/* Sol Taraf - Takım 1 Analizi */}
+            <div 
+              onClick={() => setActiveTab('team1')}
+              className={`transition-all duration-300 transform ${
+                activeTab === 'team1' 
+                  ? 'opacity-100 scale-105 shadow-xl translate-y-[-8px] bg-white z-10' 
+                  : 'opacity-65 scale-95 cursor-not-allowed pointer-events-none'
+              }`}
+            >
+              {selectedTeam1 ? (
+                <TeamAnalysisPanel
+                  team={selectedTeam1}
+                  data={analysisData?.homeTeam}
+                  isHome={true}
+                  teamData={teamData}
+                  activeTab={activeTab}
+                  match={selectedMatch}
+                  matchData={matchData}
+                  analysisMode={analysisMode}
+                />
+              ) : (
+                <div className="bg-gray-50 rounded-xl p-6 text-center text-gray-400">
+                  Lütfen Takım 1'i seçin
+                </div>
+              )}
+            </div>
+
+            {/* Sağ Taraf - Takım 2 Analizi */}
+            <div 
+              onClick={() => setActiveTab('team2')}
+              className={`transition-all duration-300 transform ${
+                activeTab === 'team2' 
+                  ? 'opacity-100 scale-105 shadow-xl translate-y-[-8px] bg-white z-10' 
+                  : 'opacity-65 scale-95 cursor-not-allowed pointer-events-none'
+              }`}
+            >
+              {selectedTeam2 ? (
+                <TeamAnalysisPanel
+                  team={selectedTeam2}
+                  data={analysisData?.awayTeam}
+                  isHome={false}
+                  teamData={teamData}
+                  activeTab={activeTab}
+                  match={selectedMatch}
+                  matchData={matchData}
+                  analysisMode={analysisMode}
+                />
+              ) : (
+                <div className="bg-gray-50 rounded-xl p-6 text-center text-gray-400">
+                  Lütfen Takım 2'yi seçin
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* AI Analizi */}
+          {(selectedTeam1 || selectedTeam2) && (
+            <div className="p-6">
+              <div className="bg-gradient-to-br from-white via-blue-50 to-indigo-50 rounded-xl shadow-lg">
+                <div className="flex items-center gap-3 p-6 border-b border-blue-100">
+                  <Brain className="text-blue-600 animate-pulse" size={28} />
+                  <h3 className="text-xl font-bold text-gray-800">Yapay Zeka Analizi</h3>
+                </div>
+                
+                {analysisData?.aiAnalysis && (
+                  <div className="p-6">
+                    {/* Ana Grid Layout */}
+                    <div className="grid grid-cols-2 gap-8">
+                      {/* Sol Panel - Takım 1 */}
+                      {selectedTeam1 && (
+                        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                          <div className="bg-gradient-to-r from-blue-600 to-blue-400 p-4">
+                            <div className="flex items-center gap-4">
+                              <TeamLogo name={selectedTeam1} className="w-12 h-12" />
+                              <h4 className="text-lg font-bold text-white">{selectedTeam1} Detaylı Analiz</h4>
+                            </div>
+                          </div>
+                          <div className="p-6 space-y-4">
+                            {analysisData.aiAnalysis.team1Analysis.map((analysis, index) => (
+                              <div key={index} className="pb-4 border-b border-gray-100 last:border-0">
+                                <p className="text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: analysis }} />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sağ Panel - Takım 2 */}
+                      {selectedTeam2 && (
+                        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                          <div className="bg-gradient-to-r from-purple-600 to-purple-400 p-4">
+                            <div className="flex items-center gap-4">
+                              <TeamLogo name={selectedTeam2} className="w-12 h-12" />
+                              <h4 className="text-lg font-bold text-white">{selectedTeam2} Detaylı Analiz</h4>
+                            </div>
+                          </div>
+                          <div className="p-6 space-y-4">
+                            {analysisData.aiAnalysis.team2Analysis.map((analysis, index) => (
+                              <div key={index} className="pb-4 border-b border-gray-100 last:border-0">
+                                <p className="text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: analysis }} />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        renderCalculationTab()
+      )}
+    </div>
+  );
+}

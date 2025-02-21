@@ -1,0 +1,72 @@
+{
+    "userDataProfilesMigration": true,
+    "profileAssociations": {
+        "workspaces": {
+            "file:///c%3A/Users/musta/Desktop/PC": "__default__profile__",
+            "file:///c%3A/Users/musta/Desktop/deneme": "__default__profile__",
+            "file:///c%3A/Users/musta/Desktop/dene": "__default__profile__",
+            "file:///c%3A/Users/musta/Desktop/api-football": "__default__profile__",
+            "file:///c%3A/Users/musta/Desktop/AI-TAHMIN2": "__default__profile__",
+            "file:///c%3A/Users/musta/Desktop/Tahmin": "__default__profile__",
+            "file:///c%3A/Users/musta/Desktop/AITAHMIN": "__default__profile__",
+            "file:///c%3A/Users/musta/Desktop/AITAHMIN2": "__default__profile__",
+            "file:///c%3A/Users/musta/Desktop/yedek": "__default__profile__"
+        },
+        "emptyWindows": {
+            "1737340961491": "__default__profile__"
+        }
+    },
+    "profileAssociationsMigration": true,
+    "telemetry.macMachineId": "20bb8f14-5da4-4067-a894-e1aeda28732f",
+    "telemetry.sqmId": "20bb8f14-5da4-4067-a894-e1aeda28732f",
+    "telemetry.machineId": "20bb8f14-5da4-4067-a894-e1aeda28732f",
+    "telemetry.devDeviceId": "20bb8f14-5da4-4067-a894-e1aeda28732f",
+    "backupWorkspaces": {
+        "workspaces": [],
+        "folders": [],
+        "emptyWindows": [
+            {
+                "backupFolder": "1737340961491"
+            }
+        ]
+    },
+    "windowControlHeight": 35,
+    "theme": "vs-dark",
+    "themeBackground": "#181818",
+    "windowSplash": {
+        "zoomLevel": 0,
+        "baseTheme": "vs-dark",
+        "colorInfo": {
+            "foreground": "#d6d6dd",
+            "background": "#181818",
+            "editorBackground": "#181818",
+            "titleBarBackground": "#181818",
+            "activityBarBackground": "#181818",
+            "sideBarBackground": "#181818",
+            "statusBarBackground": "#181818",
+            "statusBarNoFolderBackground": "#181818"
+        },
+        "layoutInfo": {
+            "sideBarSide": "left",
+            "editorPartMinWidth": 220,
+            "titleBarHeight": 35,
+            "activityBarWidth": 0,
+            "sideBarWidth": 0,
+            "statusBarHeight": 22,
+            "windowBorder": false
+        }
+    },
+    "windowsState": {
+        "lastActiveWindow": {
+            "backupPath": "C:\\Users\\musta\\AppData\\Roaming\\Cursor\\Backups\\1737340961491",
+            "uiState": {
+                "mode": 0,
+                "x": 693,
+                "y": 179,
+                "width": 1024,
+                "height": 768
+            }
+        },
+        "openedWindows": []
+    }
+}
