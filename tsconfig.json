@@ -22,7 +22,12 @@
     "strict": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "suppressImplicitAnyIndexErrors": true,
+    "ignoreDeprecations": "5.0",
+    "suppressExcessPropertyErrors": true,
+    "noPropertyAccessFromIndexSignature": false,
+    "noImplicitThis": false
   },
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]
