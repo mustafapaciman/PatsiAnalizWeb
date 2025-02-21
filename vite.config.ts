@@ -8,17 +8,20 @@ export default defineConfig({
   base: process.env.ELECTRON === 'true' ? './' : '/',
   build: {
     outDir: 'dist',
-    assetsDir: '.',
+    assetsDir: 'assets',
     sourcemap: true,
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
       },
+      output: {
+        manualChunks: undefined
+      }
     },
     emptyOutDir: true,
   },
   server: {
-    port: 5173,
+    port: 3000,
     strictPort: true,
     // Enhanced Hot Module Replacement settings
     hmr: {
