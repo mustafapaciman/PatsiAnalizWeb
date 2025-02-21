@@ -10,6 +10,7 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: true,
+    minify: false,
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
@@ -20,10 +21,13 @@ export default defineConfig({
     },
     emptyOutDir: true,
   },
+  define: {
+    'process.env.NODE_ENV': '"development"',
+    'process.env.DEBUG': 'true'
+  },
   server: {
     port: 3000,
     strictPort: true,
-    // Enhanced Hot Module Replacement settings
     hmr: {
       overlay: true,
       protocol: 'ws',
@@ -33,7 +37,6 @@ export default defineConfig({
     watch: {
       usePolling: true,
     },
-    // Enable CORS for development
     cors: true,
   },
   optimizeDeps: {
@@ -44,8 +47,12 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  // Enable more detailed build info
   logLevel: 'info',
   clearScreen: false,
+  mode: 'development',
+  esbuild: {
+    drop: [],
+    keepNames: true
+  }
 });
 // DO NOT DELETE END - Vite Configuration
