@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Dialog } from '@headlessui/react';
 import { TeamLogo } from '../TeamLogo';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, X } from 'lucide-react';
 
 interface StartWeekPartnershipAnalysisProps {
     league: string;
@@ -59,13 +59,120 @@ const TeamSelectionModal: React.FC<{
     </Dialog>
 );
 
+// TeamInfoModal bileşenini düzeltelim
+const TeamInfoModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    team: string;
+    season: string;
+    matchData: any[];
+}> = ({ isOpen, onClose, team, season, matchData }) => {
+    // Takımın o sezondaki sürpriz maçlarını bul
+    const surpriseMatches = useMemo(() => {
+        return matchData
+            .filter(m => {
+                // Aynı sezon kontrolü
+                if (getSeasonFromDate(Number(m.Date)) !== season) return false;
+                
+                // Takımın maçı mı kontrolü
+                if (m.HomeTeam !== team && m.AwayTeam !== team) return false;
+                
+                // Sürpriz maç kontrolü
+                const isHome = m.HomeTeam === team;
+                const htHome = Number(m.HTHG);
+                const htAway = Number(m.HTAG);
+                const ftHome = Number(m.FTHG);
+                const ftAway = Number(m.FTAG);
+                
+                if (isHome) {
+                    return (htHome > htAway && ftHome < ftAway) || 
+                           (htHome < htAway && ftHome > ftAway);
+                } else {
+                    return (htHome < htAway && ftHome > ftAway) || 
+                           (htHome > htAway && ftHome < ftAway);
+                }
+            })
+            .sort((a, b) => Number(a.Date) - Number(b.Date))
+            .map(m => ({
+                date: formatDate(Number(m.Date)),
+                opponent: m.HomeTeam === team ? m.AwayTeam : m.HomeTeam,
+                isHome: m.HomeTeam === team,
+                htScore: `${m.HTHG}-${m.HTAG}`,
+                ftScore: `${m.FTHG}-${m.FTAG}`
+            }));
+    }, [team, season, matchData]);
+
+    return (
+        <Dialog open={isOpen} onClose={onClose} className="relative z-50">
+            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" />
+            <div className="fixed inset-0 flex items-center justify-center p-4">
+                <Dialog.Panel className="w-full max-w-2xl bg-gray-900 rounded-xl">
+                    <div className="p-6">
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-3">
+                                <TeamLogo name={team} className="w-10 h-10" />
+                                <h2 className="text-xl font-semibold text-white">
+                                    {team} - {season} Sezonu Sürprizleri
+                                </h2>
+                            </div>
+                            <button
+                                onClick={onClose}
+                                className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+                            >
+                                <X className="w-5 h-5 text-gray-400" />
+                            </button>
+                        </div>
+
+                        <div className="max-h-[60vh] overflow-y-auto pr-4 custom-scrollbar">
+                            {surpriseMatches.length > 0 ? (
+                                <div className="space-y-4">
+                                    {surpriseMatches.map((match, idx) => (
+                                        <div key={idx} className="p-4 bg-gray-800/50 rounded-lg">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-gray-400">{match.date}</span>
+                                                <span className="text-sm px-2 py-1 bg-blue-500/20 text-blue-400 rounded">
+                                                    {match.isHome ? 'Ev Sahibi' : 'Deplasman'}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <TeamLogo name={match.opponent} className="w-6 h-6" />
+                                                <span className="text-white">{match.opponent}</span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4 text-sm">
+                                                <div className="p-2 bg-gray-900/50 rounded">
+                                                    <span className="text-gray-400">Devre Arası: </span>
+                                                    <span className="text-white">{match.htScore}</span>
+                                                </div>
+                                                <div className="p-2 bg-gray-900/50 rounded">
+                                                    <span className="text-gray-400">Maç Sonu: </span>
+                                                    <span className="text-white">{match.ftScore}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center text-gray-400 py-8">
+                                    Bu sezonda sürpriz maç bulunamadı
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </Dialog.Panel>
+            </div>
+        </Dialog>
+    );
+};
+
 // Sonuç Gösterim Komponenti
 const ResultsDisplay: React.FC<{
     selectedTeam: string;
     results: AnalysisResult[];
     onBack: () => void;
     isAnalyzing: boolean;
-}> = ({ selectedTeam, results, onBack, isAnalyzing }) => {
+    matchData: any[];
+}> = ({ selectedTeam, results, onBack, isAnalyzing, matchData }) => {
+    const [selectedInfo, setSelectedInfo] = useState<{team: string; season: string} | null>(null);
     const [showAllResults, setShowAllResults] = useState(false);
 
     // Sonuçları maç numarasına göre grupla
@@ -139,6 +246,17 @@ const ResultsDisplay: React.FC<{
                             </button>
                         </div>
 
+                        {/* TeamInfoModal'ı ekleyelim */}
+                        {selectedInfo && (
+                            <TeamInfoModal
+                                isOpen={!!selectedInfo}
+                                onClose={() => setSelectedInfo(null)}
+                                team={selectedInfo.team}
+                                season={selectedInfo.season}
+                                matchData={matchData}
+                            />
+                        )}
+
                         {/* Sonuç Kartları */}
                         {sortedGroups.length > 0 ? (
                             sortedGroups.map(([matchNumber, groupResults]) => (
@@ -156,7 +274,14 @@ const ResultsDisplay: React.FC<{
                                     <div className="grid grid-cols-2 gap-4">
                                         {groupResults.map((result, idx) => (
                                             <div key={idx} className="bg-black/20 rounded-lg p-4">
-                                                <div className="flex items-center gap-3 mb-3">
+                                                <div 
+                                                    onClick={() => setSelectedInfo({
+                                                        team: result.team,
+                                                        season: result.season
+                                                    })}
+                                                    className="flex items-center gap-2 cursor-pointer 
+                                                             hover:bg-gray-800/50 p-2 rounded-lg transition-colors"
+                                                >
                                                     <TeamLogo name={result.team} className="w-8 h-8" />
                                                     <div>
                                                         <div className="font-medium text-white">{result.team}</div>
@@ -386,6 +511,7 @@ export const StartWeekPartnershipAnalysis: React.FC<StartWeekPartnershipAnalysis
                         results={results}
                         onBack={handleBack}
                         isAnalyzing={isAnalyzing}
+                        matchData={matchData}
                     />
                 </div>
             )}

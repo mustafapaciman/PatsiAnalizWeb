@@ -17,9 +17,24 @@ import {
     Hash,
     Calendar,  // Calendar ikonunu ekle
     // ... diğer mevcut iconlar
+    ArrowRight, // veya başka bir ikon
+    Triangle, // Lucide'den Triangle ikonunu import etmeyi unutma
+    Users // veya başka uygun bir ikon
 } from 'lucide-react';
 import { DayBasedSurpriseAnalysis } from './DayBasedSurpriseAnalysis';
 import { StartWeekPartnershipAnalysis } from './StartWeekPartnershipAnalysis';
+import { XYZFormula } from './XYZFormula';
+import { SameMatchNumberAnalysis } from './SameMatchNumberAnalysis';
+import { LastScoreSurpriseAnalysis } from './LastScoreSurpriseAnalysis';
+import { SameOpponentMatchNumberAnalysis } from './SameOpponentMatchNumberAnalysis';
+import { BermudaTriangleFormula } from './BermudaTriangleFormula';
+import { BeforeXTeamFormula } from './BeforeXTeamFormula';
+import { SameOpponentScoreAnalysis } from './SameOpponentScoreAnalysis';
+import { AgainstThisTeamAnalysis } from './AgainstThisTeamAnalysis'; // Bu satırı ekleyin
+import { BermudaTriangleV2 } from './BermudaTriangleV2';
+import { WeekAnalysis } from './WeekAnalysis';
+import { NextDaySurpriseAnalysis } from './NextDaySurpriseAnalysis';
+import { DayTeamTriggerAnalysis } from './DayTeamTriggerAnalysis';
 
 interface FormulaSearchModalProps {
     isOpen: boolean;
@@ -225,6 +240,77 @@ const FORMULAS = [
         id: 'start-week-partnership',
         name: 'Başlangıç-Hafta Ortaklığı',
         description: 'Takımların sezon başlangıç maçları ve ortak hafta sürprizlerini analiz eder'
+    },
+    {
+        id: 'xyz-formula',
+        name: 'X-Y-Z Formülü',
+        description: 'X ve Y takımlarıyla ardışık karşılaşan takımların sürpriz analizini yapar',
+        icon: ArrowRight // veya başka bir ikon
+    },
+    {
+        id: 'same-match-number',
+        name: 'Aynı Maç Sayısı Sürprizi',
+        description: 'Takımların aynı maç sayılarındaki sürpriz analizini yapar',
+        icon: Calculator // veya başka bir ikon
+    },
+    {
+        id: 'last-score-surprise',
+        name: 'Son Skor ile Sürpriz',
+        description: 'İki takımın son maç skorlarıyla eşleşen sürprizleri analiz eder',
+        icon: Hash // veya başka bir ikon
+    },
+    {
+        id: 'same-opponent-match-number',  // Diğer formüllerin arasına eklenecek
+        name: 'Aynı Rakip ve Maç Sayısı',
+        description: 'Seçilen takım ile belirli maç sayısında sürpriz yapan takımları analiz eder',
+        icon: Calculator
+    },
+    {
+        id: 'bermuda-triangle',
+        name: 'Bermuda Üçgeni',
+        description: 'İki takım arasındaki sürpriz ilişkilerini analiz eder',
+        icon: Triangle // Lucide'den Triangle ikonunu import etmeyi unutma
+    },
+    {
+        id: 'before-x-team',
+        name: 'X Takımdan Önce',
+        description: 'X takımının sürpriz sonrası Y ile karşılaşmalarını analiz eder',
+        icon: ArrowRight
+    },
+    {
+        id: 'same-opponent-score',
+        name: 'Aynı Rakipten Gelen Detay',
+        description: 'İki takım arasındaki sürpriz maçların sezonlarında ortak rakiplerle yapılan aynı skorları analiz eder',
+        icon: Hash // veya başka bir ikon seçebilirsin
+    },
+    {
+        id: 'against-this-team',
+        name: 'Bu Takıma Karşı',
+        description: 'Seçilen takımın belirli bir ligdeki takımlarla olan tüm karşılaşmalarını analiz eder',
+        icon: Users // veya başka uygun bir ikon
+    },
+    {
+        id: 'bermuda-triangle-v2',
+        name: 'Bermuda Üçgeni V2',
+        description: 'İki takımın ortak sürpriz yaptığı takımları analiz eder',
+        icon: Triangle
+    },
+    {
+        id: 'week-analysis',
+        name: 'Hafta Analizi',
+        description: 'Sezon içindeki tüm sürprizleri maç sayılarına göre analiz eder',
+        icon: Calendar // veya başka uygun bir ikon
+    },
+    {
+        id: 'next-day-surprise',
+        name: 'Sonraki Gün',
+        description: 'Seçilen takımın belirli bir günde sürpriz yaptıktan sonra, ertesi gün sürpriz yapan takımları analiz eder.'
+    },
+    {
+        id: 'day-team-trigger',
+        name: 'Gün-Takım Tetikleyicisi',
+        description: 'Seçilen takımın sürpriz yaptığı günlerdeki ve sonraki günlerdeki tüm sürprizleri analiz eder',
+        icon: Calendar
     },
 ];
 
@@ -2317,6 +2403,14 @@ export function FormulaSearchModal({ isOpen, onClose, matchData }: FormulaSearch
 
     // Analiz başlatma fonksiyonu
     const startAnalysis = () => {
+        console.log("Seçilen formül:", selectedFormula);
+        
+        if (selectedFormula === 'week-analysis') {
+            console.log("Hafta analizi başlatılıyor...");
+            setStep('analysis');
+            return;
+        }
+        
         let results, opportunities, stats;
 
         if (selectedFormula === 'laliga-1x-2x') {
@@ -2360,6 +2454,49 @@ export function FormulaSearchModal({ isOpen, onClose, matchData }: FormulaSearch
             setStep('analysis');
             return;
         } else if (selectedFormula === 'start-week-partnership') {
+            setStep('analysis');
+            return;
+        } else if (selectedFormula === 'xyz-formula') {
+            setStep('analysis');
+            return;
+        } else if (selectedFormula === 'same-match-number') {
+            setStep('analysis');
+            return;
+        } else if (selectedFormula === 'last-score-surprise') {
+            setStep('analysis');
+            return;
+        } else if (selectedFormula === 'same-opponent-match-number') {
+            setStep('analysis');
+            return (
+                <SameOpponentMatchNumberAnalysis
+                    league={selectedLeague!}
+                    season={selectedSeason!}
+                    matchData={matchData}
+                    onClose={() => setStep('formula')}
+                />
+            );
+        } else if (selectedFormula === 'bermuda-triangle') {
+            setStep('analysis');
+            return;
+        } else if (selectedFormula === 'before-x-team') {
+            setStep('analysis'); // Bu satırı ekle
+            return;
+        } else if (selectedFormula === 'same-opponent-score') {
+            setStep('analysis');
+            return;
+        } else if (selectedFormula === 'against-this-team') {
+            setStep('analysis');
+            return;
+        } else if (selectedFormula === 'bermuda-triangle-v2') {
+            setStep('analysis');
+            return;
+        } else if (selectedFormula === 'week-analysis') {
+            setStep('analysis');
+            return;
+        } else if (selectedFormula === 'next-day-surprise') {
+            setStep('analysis');
+            return;
+        } else if (selectedFormula === 'day-team-trigger') {
             setStep('analysis');
             return;
         }
@@ -2543,7 +2680,15 @@ export function FormulaSearchModal({ isOpen, onClose, matchData }: FormulaSearch
                         ) : (
                             <div>
                                 {step === 'analysis' && (
-                                    selectedFormula === 'surprise-calculation' ? (
+                                    selectedFormula === 'week-analysis' ? (
+                                        console.log("Rendering WeekAnalysis..."),
+                                        <WeekAnalysis
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
+                                    ) : selectedFormula === 'surprise-calculation' ? (
                                         <SurpriseAnalysisResults 
                                             results={analysisResults as SurpriseAnalysisResult[]}
                                             league={selectedLeague!}
@@ -2630,6 +2775,90 @@ export function FormulaSearchModal({ isOpen, onClose, matchData }: FormulaSearch
                                             matchData={matchData}
                                             onClose={() => setStep('formula')}
                                         />
+                                    ) : selectedFormula === 'xyz-formula' ? (
+                                        <XYZFormula
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
+                                    ) : selectedFormula === 'same-match-number' ? (
+                                        <SameMatchNumberAnalysis
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
+                                    ) : selectedFormula === 'last-score-surprise' ? (
+                                        <LastScoreSurpriseAnalysis
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
+                                    ) : selectedFormula === 'same-opponent-match-number' ? (
+                                        <SameOpponentMatchNumberAnalysis
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
+                                    ) : selectedFormula === 'bermuda-triangle' ? (
+                                        <BermudaTriangleFormula
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
+                                    ) : selectedFormula === 'before-x-team' ? (
+                                        <BeforeXTeamFormula
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
+                                    ) : selectedFormula === 'same-opponent-score' ? (
+                                        <SameOpponentScoreAnalysis
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
+                                    ) : selectedFormula === 'against-this-team' ? (
+                                        <AgainstThisTeamAnalysis
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
+                                    ) : selectedFormula === 'bermuda-triangle-v2' ? (
+                                        <BermudaTriangleV2
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
+                                    ) : selectedFormula === 'week-analysis' ? (
+                                        <WeekAnalysis
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
+                                    ) : selectedFormula === 'next-day-surprise' ? (
+                                        <NextDaySurpriseAnalysis
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
+                                    ) : selectedFormula === 'day-team-trigger' ? (
+                                        <DayTeamTriggerAnalysis
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
                                     ) : (
                                         <AnalysisResults 
                                             results={analysisResults as AnalysisResult[]}
@@ -2649,4 +2878,4 @@ export function FormulaSearchModal({ isOpen, onClose, matchData }: FormulaSearch
             </div>
         </Dialog>
     );
-} 
+}
