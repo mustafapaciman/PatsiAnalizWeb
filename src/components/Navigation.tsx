@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { Team } from '../utils/types/team';
 import { FixtureDownload } from './FixtureDownload';
 import { Link, useLocation } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 
 interface NavigationProps {
   activePage: 'fixtures' | 'analysis';
@@ -40,19 +41,27 @@ export function Navigation({
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet) as Team[];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet) as Array<Team & { logoURL?: string }>;
 
       const teamMapping = jsonData.reduce((acc, team) => {
-        acc[team.name] = team;
-        if (team.shortDisplayName !== team.name) {
-          acc[team.shortDisplayName] = team;
+        const name = String(team.name || '').trim();
+        const logoUrl = String(team.logoUrl || team.logoURL || '').trim();
+        if (!name || !/^https?:\/\//i.test(logoUrl)) return acc;
+        const normalizedTeam = { ...team, name, logoUrl };
+        acc[name] = normalizedTeam;
+        if (team.shortDisplayName && team.shortDisplayName !== name) {
+          acc[team.shortDisplayName.trim()] = normalizedTeam;
         }
         return acc;
       }, {} as { [key: string]: Team });
 
+      if (Object.keys(teamMapping).length === 0) {
+        throw new Error('Dosyada name ve logoURL/ logoUrl sütunları bulunamadı');
+      }
       onTeamDataLoad(teamMapping);
     } catch (error) {
       console.error('Error loading team logos:', error);
+      toast.error('Logo dosyası okunamadı. name ve logoURL sütunlarını kontrol edin.');
     }
   }, [onTeamDataLoad]);
 
@@ -105,6 +114,7 @@ export function Navigation({
           <div className="relative">
             <button
               onClick={handleImageClick}
+              title="Takım logolarını CSV veya Excel dosyasından yükle"
               className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-300 transform hover:scale-110 group"
             >
               <Image size={24} className="text-gray-600 dark:text-gray-400 transition-all duration-300 group-hover:text-blue-600 dark:group-hover:text-blue-400" />
@@ -116,7 +126,7 @@ export function Navigation({
               type="file"
               ref={fileInputRef}
               className="hidden"
-              accept=".xlsx,.csv"
+              accept=".xlsx,.xls,.csv"
               onChange={handleFileChange}
             />
           </div>

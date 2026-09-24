@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { TeamMapping } from '../utils/types/team';
 import { getTeamLogo } from '../utils/teamLogoLoader';
 
@@ -13,6 +13,9 @@ interface TeamLogoProps {
 
 export function TeamLogo({ name, className = '', teamData, showName = false }: TeamLogoProps) {
   const [error, setError] = useState(false);
+  const logoUrl = teamData?.[name]?.logoUrl || getTeamLogo(name);
+
+  useEffect(() => setError(false), [logoUrl]);
 
   const handleError = () => {
     setError(true);
@@ -29,8 +32,6 @@ export function TeamLogo({ name, className = '', teamData, showName = false }: T
     );
   }
 
-  const logoUrl = getTeamLogo(name);
-  
   return (
     <div className="flex flex-col items-center gap-1">
       <img

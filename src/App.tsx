@@ -21,6 +21,7 @@ import MatchSchedule from './components/MatchSchedule';
 import * as XLSX from 'xlsx';
 import { PatternDetail } from './components/analysis/PatternDetail';
 import { matchDB } from './services/indexedDB';
+import { loadUploadedTeamLogos, saveUploadedTeamLogos } from './utils/teamLogoLoader';
 import { toast } from 'react-hot-toast';
 import './styles/darkMode.css';
 
@@ -34,6 +35,8 @@ const tabs = [
   { id: 'matchSchedule', name: 'Maç Programı' }
 ] as const;
 
+const MATCH_DATA_VERSION = '2025-2026-v1';
+
 // DO NOT DELETE START - Main App Component
 export default function App() {
   const navigate = useNavigate();
@@ -42,7 +45,18 @@ export default function App() {
   const [fixtures, setFixtures] = useState<Match[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [searchResults, setSearchResults] = useState<AnalysisResult | null>(null);
-  const [teamData, setTeamData] = useState<TeamMapping>({});
+  const [teamData, setTeamData] = useState<TeamMapping>(loadUploadedTeamLogos);
+
+  const handleTeamDataLoad = (logos: TeamMapping) => {
+    try {
+      saveUploadedTeamLogos(logos);
+      setTeamData(logos);
+      toast.success('Takım logoları yüklendi ve bu tarayıcıya kaydedildi');
+    } catch (error) {
+      console.error('Logo kaydetme hatası:', error);
+      toast.error('Logo dosyası kaydedilemedi');
+    }
+  };
   const [isLoading, setIsLoading] = useState(true);
   const [progress, setProgress] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
@@ -171,7 +185,7 @@ export default function App() {
             // Önce IndexedDB'den veri yüklemeyi dene
             const cachedData = await matchDB.getMatches();
             
-            if (cachedData && cachedData.length > 0) {
+            if (cachedData && cachedData.length > 0 && localStorage.getItem('patsiMatchDataVersion') === MATCH_DATA_VERSION) {
                 console.log('Loading data from IndexedDB cache...');
                 setProgress(50);
                 setMatchData(cachedData);
@@ -201,6 +215,7 @@ export default function App() {
                 
                 // Verileri IndexedDB'ye de kaydet
                 await matchDB.saveMatches(data);
+                localStorage.setItem('patsiMatchDataVersion', MATCH_DATA_VERSION);
                 
                 setProgress(90);
 
@@ -288,6 +303,7 @@ export default function App() {
       // Verileri state'e ve IndexedDB'ye kaydet
       setMatchData(data);
       await matchDB.saveMatches(data);
+      localStorage.setItem('patsiMatchDataVersion', MATCH_DATA_VERSION);
       
       toast.success('Veriler başarıyla güncellendi!');
       
@@ -398,7 +414,7 @@ export default function App() {
           activePage={activePage} 
           onPageChange={handlePageChange}
           onDataLoad={setMatchData}
-          onTeamDataLoad={setTeamData}
+          onTeamDataLoad={handleTeamDataLoad}
           onFixturesLoad={setFixtures}
           className="bg-white dark:bg-gray-800 shadow-lg rounded-lg"
         />

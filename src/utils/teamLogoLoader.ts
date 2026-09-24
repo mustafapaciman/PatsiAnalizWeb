@@ -1,7 +1,27 @@
 import { TeamMapping } from './types/team';
 
+const UPLOADED_LOGOS_KEY = 'patsiUploadedTeamLogos';
+let uploadedLogos: TeamMapping | null = null;
+
+export function loadUploadedTeamLogos(): TeamMapping {
+  if (uploadedLogos) return uploadedLogos;
+  try {
+    uploadedLogos = JSON.parse(localStorage.getItem(UPLOADED_LOGOS_KEY) || '{}');
+  } catch {
+    uploadedLogos = {};
+  }
+  return uploadedLogos || {};
+}
+
+export function saveUploadedTeamLogos(logos: TeamMapping): void {
+  localStorage.setItem(UPLOADED_LOGOS_KEY, JSON.stringify(logos));
+  uploadedLogos = logos;
+}
+
 // DO NOT DELETE START - Team Logo Mapping
 export const getTeamLogo = (teamName: string): string => {
+  const uploaded = loadUploadedTeamLogos()[teamName]?.logoUrl;
+  if (uploaded && /^(https?:\/\/|data:image\/)/i.test(uploaded)) return uploaded;
   const teamLogoMap: { [key: string]: string } = {
   
    // Süper Lig

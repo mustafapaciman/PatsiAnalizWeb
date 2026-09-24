@@ -657,34 +657,6 @@ export const NewAnalysisTab: React.FC<NewAnalysisTabProps> = ({
     });
   }, [selectedLeague, selectedSeason, matchData]);
 
-  useEffect(() => {
-    console.log('Component Structure:', {
-      fileName: 'NewAnalysisTab.tsx',
-      path: 'src/components/analysis/NewAnalysisTab.tsx',
-      containerStructure: {
-        outerContainer: document.querySelector('div')?.className,
-        maxWidthContainer: document.querySelector('.max-w-[1800px]')?.className,
-        flexContainer: document.querySelector('.flex')?.className,
-        allPanels: Array.from(document.querySelectorAll('[class*="w-["]')).map(el => ({
-          width: el.className,
-          content: el.textContent?.slice(0, 50)
-        }))
-      }
-    });
-  }, []);
-
-  useEffect(() => {
-    console.log('Sayfa yapısı:', {
-      panels: document.querySelectorAll('.sticky').length,
-      containerWidth: document.querySelector('.max-w-[1600px]')?.clientWidth,
-      flexContainer: document.querySelector('.flex')?.getBoundingClientRect(),
-      allPanels: Array.from(document.querySelectorAll('.sticky')).map(panel => ({
-        width: panel.clientWidth,
-        position: panel.getBoundingClientRect()
-      }))
-    });
-  }, [isLoading, showResults]);
-
   return (
     <div className="debug-outer">
       <div className="max-w-[1800px] mx-auto px-8 debug-maxw">
