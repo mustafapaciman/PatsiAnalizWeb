@@ -21,7 +21,7 @@ import MatchSchedule from './components/MatchSchedule';
 import * as XLSX from 'xlsx';
 import { PatternDetail } from './components/analysis/PatternDetail';
 import { matchDB } from './services/indexedDB';
-import { loadUploadedTeamLogos, saveUploadedTeamLogos } from './utils/teamLogoLoader';
+import { loadEffectiveTeamLogos, saveUploadedTeamLogos } from './utils/teamLogoLoader';
 import { toast } from 'react-hot-toast';
 import './styles/darkMode.css';
 
@@ -35,7 +35,7 @@ const tabs = [
   { id: 'matchSchedule', name: 'Maç Programı' }
 ] as const;
 
-const MATCH_DATA_VERSION = '2025-2026-v1';
+const MATCH_DATA_VERSION = '2026-2027-v1';
 
 // DO NOT DELETE START - Main App Component
 export default function App() {
@@ -45,12 +45,12 @@ export default function App() {
   const [fixtures, setFixtures] = useState<Match[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [searchResults, setSearchResults] = useState<AnalysisResult | null>(null);
-  const [teamData, setTeamData] = useState<TeamMapping>(loadUploadedTeamLogos);
+  const [teamData, setTeamData] = useState<TeamMapping>(loadEffectiveTeamLogos);
 
   const handleTeamDataLoad = (logos: TeamMapping) => {
     try {
       saveUploadedTeamLogos(logos);
-      setTeamData(logos);
+      setTeamData(loadEffectiveTeamLogos());
       toast.success('Takım logoları yüklendi ve bu tarayıcıya kaydedildi');
     } catch (error) {
       console.error('Logo kaydetme hatası:', error);

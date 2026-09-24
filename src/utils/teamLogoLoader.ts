@@ -1,7 +1,34 @@
 import { TeamMapping } from './types/team';
+import * as XLSX from 'xlsx';
+import bundledLogoCsv from '../../team_logos.csv?raw';
 
 const UPLOADED_LOGOS_KEY = 'patsiUploadedTeamLogos';
 let uploadedLogos: TeamMapping | null = null;
+let bundledLogos: TeamMapping | null = null;
+let effectiveLogos: TeamMapping | null = null;
+
+export function loadBundledTeamLogos(): TeamMapping {
+  if (bundledLogos) return bundledLogos;
+  const workbook = XLSX.read(bundledLogoCsv, { type: 'string' });
+  const rows = XLSX.utils.sheet_to_json<{ name?: string; shortDisplayName?: string; logoURL?: string }>(
+    workbook.Sheets[workbook.SheetNames[0]]
+  );
+  bundledLogos = {};
+  for (const row of rows) {
+    const name = String(row.name || '').trim();
+    const logoUrl = String(row.logoURL || '').trim();
+    if (!name || !/^https?:\/\//i.test(logoUrl)) continue;
+    const team = { name, logoUrl, shortDisplayName: row.shortDisplayName?.trim() };
+    bundledLogos[name] = team;
+    if (team.shortDisplayName) bundledLogos[team.shortDisplayName] = team;
+  }
+  return bundledLogos;
+}
+
+export function loadEffectiveTeamLogos(): TeamMapping {
+  if (!effectiveLogos) effectiveLogos = { ...loadBundledTeamLogos(), ...loadUploadedTeamLogos() };
+  return effectiveLogos;
+}
 
 export function loadUploadedTeamLogos(): TeamMapping {
   if (uploadedLogos) return uploadedLogos;
@@ -16,12 +43,13 @@ export function loadUploadedTeamLogos(): TeamMapping {
 export function saveUploadedTeamLogos(logos: TeamMapping): void {
   localStorage.setItem(UPLOADED_LOGOS_KEY, JSON.stringify(logos));
   uploadedLogos = logos;
+  effectiveLogos = null;
 }
 
 // DO NOT DELETE START - Team Logo Mapping
 export const getTeamLogo = (teamName: string): string => {
-  const uploaded = loadUploadedTeamLogos()[teamName]?.logoUrl;
-  if (uploaded && /^(https?:\/\/|data:image\/)/i.test(uploaded)) return uploaded;
+  const logo = loadEffectiveTeamLogos()[teamName]?.logoUrl;
+  if (logo && /^(https?:\/\/|data:image\/)/i.test(logo)) return logo;
   const teamLogoMap: { [key: string]: string } = {
   
    // Süper Lig
