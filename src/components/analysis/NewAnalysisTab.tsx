@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Match } from '../../utils/types/match';
 import { TeamMapping } from '../../utils/types/team';
 import { TeamLogo } from '../TeamLogo';
+import { DetailedAnalysisPanel } from './components/DetailedAnalysisPanel';
 
 // Sonuç tipi için interface
 interface AnalysisResult {
@@ -58,6 +59,7 @@ export const NewAnalysisTab: React.FC<NewAnalysisTabProps> = ({
   const [showResults, setShowResults] = useState<boolean>(false);
   const [lastOpponent, setLastOpponent] = useState<string>(''); // Y takımı
   const [intersections, setIntersections] = useState<Intersection[]>([]);
+  const [surprisePageCount, setSurprisePageCount] = useState(1);
 
   // State tanımlamalarından sonra useEffect ekleyelim
   useEffect(() => {
@@ -670,8 +672,18 @@ export const NewAnalysisTab: React.FC<NewAnalysisTabProps> = ({
                     Detaylı Analiz
                   </div>
                 </div>
-                <div className="p-6">
-                  {/* Analiz içeriği buraya gelecek */}
+                <div>
+                  <DetailedAnalysisPanel
+                    lastOpponent={lastOpponent}
+                    matchData={matchData}
+                    selectedLeague={selectedLeague}
+                    isLoading={isLoading}
+                    showResults={showResults}
+                    surprisePageCount={surprisePageCount}
+                    setSurprisePageCount={setSurprisePageCount}
+                    formatDate={formatDate}
+                    currentTeam={currentTeam}
+                  />
                 </div>
               </div>
 

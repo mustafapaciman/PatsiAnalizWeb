@@ -733,7 +733,7 @@ export const DetailedAnalysisPanel: React.FC<DetailedAnalysisPanelProps> = ({
     };
 
     return (
-        <div className="w-[350px] bg-gray-800/90 rounded-lg overflow-hidden h-fit sticky top-4 z-10">
+        <div className="w-full text-left">
             <div className="space-y-3 p-4">
                 {/* Y Takımı Sürpriz Maçları */}
                 <div className="space-y-4">
