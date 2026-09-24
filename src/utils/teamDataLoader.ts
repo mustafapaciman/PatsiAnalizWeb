@@ -26,6 +26,7 @@ const DATA_FILES = [
   'data/2022-2023.xlsx',
   'data/2023-2024.xlsx',
   'data/2024-2025.xlsx',
+  'data/2025-2026.xlsx',
   'data/uefacompetitionresults1.xlsx'
 
 ];
