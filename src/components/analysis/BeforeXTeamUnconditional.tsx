@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Dialog } from '@headlessui/react';
-import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Loader2, X } from 'lucide-react';
 import { TeamLogo } from '../TeamLogo';
 
 interface BeforeXTeamUnconditionalProps {
@@ -13,7 +13,27 @@ interface BeforeXTeamUnconditionalProps {
 interface AnalysisResult {
     season: string;
     triggerTeam: string;
+    surpriseDate: number;
+    surpriseOpponent: string;
     surpriseMatch: {
+        date: string;
+        homeTeam: string;
+        awayTeam: string;
+        htScore: string;
+        ftScore: string;
+    };
+    matchWithX: {
+        date: string;
+        homeTeam: string;
+        awayTeam: string;
+        htScore: string;
+        ftScore: string;
+    };
+}
+
+interface NormalSeasonResult {
+    candidateTeam: string;
+    normalMatch: {
         date: string;
         homeTeam: string;
         awayTeam: string;
@@ -61,10 +81,6 @@ const analyze = (selectedX: string, league: string, matchData: any[]): AnalysisR
     const results: AnalysisResult[] = [];
     const seen = new Set<string>();
 
-    // "X Takımdan Önce" mantığının şartsız hali:
-    // Her sürpriz maç için iki takımı da aday kabul et.
-    // Aday takımın ligdeki BİR SONRAKİ maçı seçilen X takımına karşıysa sonucu ekle.
-    // Böylece sürprizi yapan/yaşayan takımın kim olduğu önceden seçilmez; tek şart hedef X'tir.
     sortedMatches.forEach((surpriseMatch) => {
         if (!isSurprise(surpriseMatch)) return;
 
@@ -97,9 +113,16 @@ const analyze = (selectedX: string, league: string, matchData: any[]): AnalysisR
             if (seen.has(key)) return;
             seen.add(key);
 
+            const surpriseOpponent =
+                surpriseMatch.HomeTeam === triggerTeam
+                    ? surpriseMatch.AwayTeam
+                    : surpriseMatch.HomeTeam;
+
             results.push({
                 season: calculateSeason(surpriseMatch.Date),
                 triggerTeam,
+                surpriseDate,
+                surpriseOpponent,
                 surpriseMatch: {
                     date: formatDate(surpriseMatch.Date),
                     homeTeam: surpriseMatch.HomeTeam,
@@ -121,8 +144,83 @@ const analyze = (selectedX: string, league: string, matchData: any[]): AnalysisR
     return results.sort((a, b) => {
         const seasonCompare = b.season.localeCompare(a.season);
         if (seasonCompare !== 0) return seasonCompare;
-        return b.surpriseMatch.date.localeCompare(a.surpriseMatch.date);
+        return b.surpriseDate - a.surpriseDate;
     });
+};
+
+const findNormalSeasonMatches = (
+    selectedX: string,
+    league: string,
+    matchData: any[],
+    sourceResult: AnalysisResult
+): NormalSeasonResult[] => {
+    const seasonMatches = matchData
+        .filter(match =>
+            match.Div === league &&
+            Number.isFinite(Number(match.Date)) &&
+            calculateSeason(match.Date) === sourceResult.season
+        )
+        .sort((a, b) => Number(a.Date) - Number(b.Date));
+
+    const results: NormalSeasonResult[] = [];
+    const seen = new Set<string>();
+    const opponent = sourceResult.surpriseOpponent;
+
+    seasonMatches.forEach(normalMatch => {
+        if (isSurprise(normalMatch)) return;
+        if (normalMatch.HomeTeam !== opponent && normalMatch.AwayTeam !== opponent) return;
+
+        const candidateTeam =
+            normalMatch.HomeTeam === opponent ? normalMatch.AwayTeam : normalMatch.HomeTeam;
+
+        // Ana sürprizdeki detay takımını tekrar kullanma.
+        if (!candidateTeam || candidateTeam === sourceResult.triggerTeam || candidateTeam === selectedX) return;
+
+        const normalDate = Number(normalMatch.Date);
+        const nextMatch = seasonMatches.find(match =>
+            Number(match.Date) > normalDate &&
+            (match.HomeTeam === candidateTeam || match.AwayTeam === candidateTeam)
+        );
+
+        if (!nextMatch) return;
+
+        const facesSelectedX =
+            (nextMatch.HomeTeam === candidateTeam && nextMatch.AwayTeam === selectedX) ||
+            (nextMatch.AwayTeam === candidateTeam && nextMatch.HomeTeam === selectedX);
+
+        if (!facesSelectedX) return;
+
+        const key = [
+            normalMatch.Date,
+            normalMatch.HomeTeam,
+            normalMatch.AwayTeam,
+            candidateTeam,
+            nextMatch.Date
+        ].join('|');
+
+        if (seen.has(key)) return;
+        seen.add(key);
+
+        results.push({
+            candidateTeam,
+            normalMatch: {
+                date: formatDate(normalMatch.Date),
+                homeTeam: normalMatch.HomeTeam,
+                awayTeam: normalMatch.AwayTeam,
+                htScore: `${normalMatch.HTHG}-${normalMatch.HTAG}`,
+                ftScore: `${normalMatch.FTHG}-${normalMatch.FTAG}`
+            },
+            matchWithX: {
+                date: formatDate(nextMatch.Date),
+                homeTeam: nextMatch.HomeTeam,
+                awayTeam: nextMatch.AwayTeam,
+                htScore: `${nextMatch.HTHG}-${nextMatch.HTAG}`,
+                ftScore: `${nextMatch.FTHG}-${nextMatch.FTAG}`
+            }
+        });
+    });
+
+    return results;
 };
 
 const TeamSelectionModal: React.FC<{
@@ -158,6 +256,125 @@ const TeamSelectionModal: React.FC<{
     </Dialog>
 );
 
+const SeasonNormalMatchesModal: React.FC<{
+    sourceResult: AnalysisResult | null;
+    selectedX: string;
+    results: NormalSeasonResult[];
+    onClose: () => void;
+}> = ({ sourceResult, selectedX, results, onClose }) => (
+    <Dialog open={!!sourceResult} onClose={onClose} className="relative z-[60]">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+            <Dialog.Panel className="w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-2xl bg-gray-900 border border-gray-700 shadow-2xl">
+                {sourceResult && (
+                    <>
+                        <div className="p-6 border-b border-gray-800 flex items-start justify-between gap-4">
+                            <div>
+                                <Dialog.Title className="text-2xl font-bold text-white">
+                                    {sourceResult.season} — Normal Maç Kontrolü
+                                </Dialog.Title>
+                                <p className="text-gray-400 mt-1">
+                                    Referans rakip: <span className="text-blue-300 font-semibold">{sourceResult.surpriseOpponent}</span>.
+                                    Ana sürprizdeki <span className="text-red-300 font-semibold">{sourceResult.triggerTeam}</span> hariç tutulur.
+                                </p>
+                            </div>
+                            <button
+                                onClick={onClose}
+                                className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto max-h-[calc(90vh-100px)] space-y-6">
+                            <div className="rounded-xl border border-red-500/20 bg-red-950/20 p-5">
+                                <div className="text-xs uppercase tracking-wide text-red-300 mb-3">Referans sürpriz</div>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <TeamLogo name={sourceResult.surpriseMatch.homeTeam} className="w-10 h-10" />
+                                    <span className="text-gray-200">{sourceResult.surpriseMatch.homeTeam}</span>
+                                    <span className="text-gray-500">vs</span>
+                                    <TeamLogo name={sourceResult.surpriseMatch.awayTeam} className="w-10 h-10" />
+                                    <span className="text-gray-200">{sourceResult.surpriseMatch.awayTeam}</span>
+                                    <span className="ml-auto text-white font-semibold">
+                                        {sourceResult.surpriseMatch.htScore} → {sourceResult.surpriseMatch.ftScore}
+                                    </span>
+                                </div>
+                                <div className="text-sm text-gray-500 mt-2">{sourceResult.surpriseMatch.date}</div>
+                            </div>
+
+                            <div>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-semibold text-white">
+                                        Aynı sezondaki normal zincirler
+                                    </h3>
+                                    <span className="text-sm text-gray-400">{results.length} sonuç</span>
+                                </div>
+
+                                {results.length === 0 ? (
+                                    <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-8 text-center text-gray-400">
+                                        Bu sezonda aynı rakiple normal oynayıp bir sonraki maçında {selectedX} ile karşılaşan başka takım bulunamadı.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {results.map((result, index) => (
+                                            <div
+                                                key={`${result.candidateTeam}-${index}`}
+                                                className="rounded-xl border border-gray-700/50 bg-gray-800/40 p-5"
+                                            >
+                                                <div className="grid md:grid-cols-[1fr_auto_1fr] gap-5 items-center">
+                                                    <div>
+                                                        <div className="text-xs uppercase tracking-wide text-emerald-300 mb-3">
+                                                            Normal maç — {result.candidateTeam}
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <TeamLogo name={result.normalMatch.homeTeam} className="w-9 h-9" />
+                                                            <span className="text-gray-200">{result.normalMatch.homeTeam}</span>
+                                                            <span className="text-gray-500">vs</span>
+                                                            <TeamLogo name={result.normalMatch.awayTeam} className="w-9 h-9" />
+                                                            <span className="text-gray-200">{result.normalMatch.awayTeam}</span>
+                                                        </div>
+                                                        <div className="mt-3 flex items-center justify-between gap-4">
+                                                            <span className="text-sm text-gray-500">{result.normalMatch.date}</span>
+                                                            <span className="font-semibold text-white">
+                                                                {result.normalMatch.htScore} → {result.normalMatch.ftScore}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    <ArrowRight className="w-6 h-6 text-blue-400 mx-auto" />
+
+                                                    <div className="p-4 bg-blue-900/20 rounded-lg border border-blue-500/10">
+                                                        <div className="text-xs uppercase tracking-wide text-blue-300 mb-3">
+                                                            Sonraki maç: {selectedX}
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <TeamLogo name={result.matchWithX.homeTeam} className="w-9 h-9" />
+                                                            <span className="text-gray-200">{result.matchWithX.homeTeam}</span>
+                                                            <span className="text-gray-500">vs</span>
+                                                            <TeamLogo name={result.matchWithX.awayTeam} className="w-9 h-9" />
+                                                            <span className="text-gray-200">{result.matchWithX.awayTeam}</span>
+                                                        </div>
+                                                        <div className="mt-3 flex items-center justify-between gap-4">
+                                                            <span className="text-sm text-blue-300">{result.matchWithX.date}</span>
+                                                            <span className="font-semibold text-white">
+                                                                {result.matchWithX.htScore} → {result.matchWithX.ftScore}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </>
+                )}
+            </Dialog.Panel>
+        </div>
+    </Dialog>
+);
+
 export const BeforeXTeamUnconditional: React.FC<BeforeXTeamUnconditionalProps> = ({
     league,
     matchData,
@@ -166,6 +383,8 @@ export const BeforeXTeamUnconditional: React.FC<BeforeXTeamUnconditionalProps> =
     const [selectedX, setSelectedX] = useState<string | null>(null);
     const [results, setResults] = useState<AnalysisResult[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [seasonDetailSource, setSeasonDetailSource] = useState<AnalysisResult | null>(null);
+    const [seasonNormalResults, setSeasonNormalResults] = useState<NormalSeasonResult[]>([]);
 
     const teams = useMemo(() => {
         const set = new Set<string>();
@@ -199,6 +418,19 @@ export const BeforeXTeamUnconditional: React.FC<BeforeXTeamUnconditionalProps> =
     const handleBack = () => {
         setSelectedX(null);
         setResults([]);
+        setSeasonDetailSource(null);
+        setSeasonNormalResults([]);
+    };
+
+    const openSeasonDetail = (result: AnalysisResult) => {
+        if (!selectedX) return;
+        setSeasonDetailSource(result);
+        setSeasonNormalResults(findNormalSeasonMatches(selectedX, league, matchData, result));
+    };
+
+    const closeSeasonDetail = () => {
+        setSeasonDetailSource(null);
+        setSeasonNormalResults([]);
     };
 
     if (!selectedX) {
@@ -213,114 +445,133 @@ export const BeforeXTeamUnconditional: React.FC<BeforeXTeamUnconditionalProps> =
     }
 
     return (
-        <div className="p-6 h-[calc(100vh-4rem)] flex flex-col">
-            <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-blue-800 rounded-2xl p-8 shadow-xl shadow-blue-900/20 relative overflow-hidden">
-                <button
-                    onClick={handleBack}
-                    className="absolute top-4 left-4 p-2 rounded-lg bg-black/20 hover:bg-black/30 transition-colors text-white"
-                    title="Takım seçimine dön"
-                >
-                    <ArrowLeft className="w-5 h-5" />
-                </button>
+        <>
+            <div className="p-6 h-[calc(100vh-4rem)] flex flex-col">
+                <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-blue-800 rounded-2xl p-8 shadow-xl shadow-blue-900/20 relative overflow-hidden">
+                    <button
+                        onClick={handleBack}
+                        className="absolute top-4 left-4 p-2 rounded-lg bg-black/20 hover:bg-black/30 transition-colors text-white"
+                        title="Takım seçimine dön"
+                    >
+                        <ArrowLeft className="w-5 h-5" />
+                    </button>
 
-                <div className="flex items-center gap-5 mt-5">
-                    <TeamLogo name={selectedX} className="w-16 h-16" />
-                    <div>
-                        <h2 className="text-3xl font-bold text-white">
-                            X Takımından Önce (Şartsız Takım)
-                        </h2>
-                        <p className="text-blue-200 mt-1">
-                            {selectedX} ile karşılaşmadan önce gerçekleşen tüm sürprizler
-                        </p>
+                    <div className="flex items-center gap-5 mt-5">
+                        <TeamLogo name={selectedX} className="w-16 h-16" />
+                        <div>
+                            <h2 className="text-3xl font-bold text-white">
+                                X Takımından Önce (Şartsız Takım)
+                            </h2>
+                            <p className="text-blue-200 mt-1">
+                                {selectedX} ile karşılaşmadan önce gerçekleşen tüm sürprizler
+                            </p>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div className="flex-1 overflow-auto mt-8 px-2 pb-8">
-                {isAnalyzing ? (
-                    <div className="flex flex-col items-center justify-center py-20">
-                        <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
-                        <p className="text-gray-400">Analiz yapılıyor...</p>
-                    </div>
-                ) : results.length === 0 ? (
-                    <div className="text-center py-16 bg-gray-800/30 rounded-xl border border-gray-700/30">
-                        <p className="text-gray-300 text-lg">Bu takım öncesinde uygun sürpriz bulunamadı.</p>
-                    </div>
-                ) : (
-                    <div className="space-y-8">
-                        <div className="flex items-center justify-between">
-                            <div className="text-gray-300">
-                                Toplam <span className="font-semibold text-white">{results.length}</span> sonuç
-                            </div>
-                            <div className="text-sm text-gray-500">
-                                {groupedResults.length} sezon
-                            </div>
+                <div className="flex-1 overflow-auto mt-8 px-2 pb-8">
+                    {isAnalyzing ? (
+                        <div className="flex flex-col items-center justify-center py-20">
+                            <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
+                            <p className="text-gray-400">Analiz yapılıyor...</p>
                         </div>
-
-                        {groupedResults.map(([seasonName, seasonResults]) => (
-                            <section key={seasonName} className="space-y-4">
-                                <div className="flex items-center gap-3">
-                                    <h3 className="text-xl font-bold text-white">{seasonName}</h3>
-                                    <span className="px-2.5 py-1 text-xs rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/20">
-                                        {seasonResults.length} sonuç
-                                    </span>
+                    ) : results.length === 0 ? (
+                        <div className="text-center py-16 bg-gray-800/30 rounded-xl border border-gray-700/30">
+                            <p className="text-gray-300 text-lg">Bu takım öncesinde uygun sürpriz bulunamadı.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-8">
+                            <div className="flex items-center justify-between">
+                                <div className="text-gray-300">
+                                    Toplam <span className="font-semibold text-white">{results.length}</span> sonuç
                                 </div>
+                                <div className="text-sm text-gray-500">
+                                    {groupedResults.length} sezon
+                                </div>
+                            </div>
 
-                                <div className="space-y-4">
-                                    {seasonResults.map((result, index) => (
-                                        <div
-                                            key={`${seasonName}-${index}`}
-                                            className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-xl border border-gray-700/30 hover:border-blue-500/30 transition-all p-6"
-                                        >
-                                            <div className="grid md:grid-cols-[1fr_auto_1fr] gap-5 items-center">
-                                                <div>
-                                                    <div className="text-xs uppercase tracking-wide text-red-300 mb-3">
-                                                        Sürpriz — {result.triggerTeam}
-                                                    </div>
-                                                    <div className="flex items-center gap-3">
-                                                        <TeamLogo name={result.surpriseMatch.homeTeam} className="w-10 h-10" />
-                                                        <span className="text-gray-200">{result.surpriseMatch.homeTeam}</span>
-                                                        <span className="text-gray-500">vs</span>
-                                                        <TeamLogo name={result.surpriseMatch.awayTeam} className="w-10 h-10" />
-                                                        <span className="text-gray-200">{result.surpriseMatch.awayTeam}</span>
-                                                    </div>
-                                                    <div className="mt-3 flex items-center justify-between gap-4">
-                                                        <span className="text-sm text-gray-500">{result.surpriseMatch.date}</span>
-                                                        <span className="font-semibold text-white">
-                                                            {result.surpriseMatch.htScore} → {result.surpriseMatch.ftScore}
-                                                        </span>
-                                                    </div>
+                            {groupedResults.map(([seasonName, seasonResults]) => (
+                                <section key={seasonName} className="space-y-4">
+                                    <div className="flex items-center gap-3">
+                                        <h3 className="text-xl font-bold text-white">{seasonName}</h3>
+                                        <span className="px-2.5 py-1 text-xs rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/20">
+                                            {seasonResults.length} sonuç
+                                        </span>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {seasonResults.map((result, index) => (
+                                            <div
+                                                key={`${seasonName}-${index}`}
+                                                className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-xl border border-gray-700/30 hover:border-blue-500/30 transition-all p-6"
+                                            >
+                                                <div className="flex justify-end mb-4">
+                                                    <button
+                                                        onClick={() => openSeasonDetail(result)}
+                                                        className="px-3 py-1.5 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 border border-violet-400/30 text-violet-200 text-sm font-semibold transition-colors"
+                                                        title={`${result.season} sezonundaki normal X-öncesi eşleşmeleri göster`}
+                                                    >
+                                                        {result.season}
+                                                    </button>
                                                 </div>
 
-                                                <ArrowRight className="w-6 h-6 text-blue-400 mx-auto" />
+                                                <div className="grid md:grid-cols-[1fr_auto_1fr] gap-5 items-center">
+                                                    <div>
+                                                        <div className="text-xs uppercase tracking-wide text-red-300 mb-3">
+                                                            Sürpriz — {result.triggerTeam}
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <TeamLogo name={result.surpriseMatch.homeTeam} className="w-10 h-10" />
+                                                            <span className="text-gray-200">{result.surpriseMatch.homeTeam}</span>
+                                                            <span className="text-gray-500">vs</span>
+                                                            <TeamLogo name={result.surpriseMatch.awayTeam} className="w-10 h-10" />
+                                                            <span className="text-gray-200">{result.surpriseMatch.awayTeam}</span>
+                                                        </div>
+                                                        <div className="mt-3 flex items-center justify-between gap-4">
+                                                            <span className="text-sm text-gray-500">{result.surpriseMatch.date}</span>
+                                                            <span className="font-semibold text-white">
+                                                                {result.surpriseMatch.htScore} → {result.surpriseMatch.ftScore}
+                                                            </span>
+                                                        </div>
+                                                    </div>
 
-                                                <div className="p-4 bg-blue-900/20 rounded-lg border border-blue-500/10">
-                                                    <div className="text-xs uppercase tracking-wide text-blue-300 mb-3">
-                                                        Sonraki maç: {selectedX}
-                                                    </div>
-                                                    <div className="flex items-center gap-3">
-                                                        <TeamLogo name={result.matchWithX.homeTeam} className="w-9 h-9" />
-                                                        <span className="text-gray-200">{result.matchWithX.homeTeam}</span>
-                                                        <span className="text-gray-500">vs</span>
-                                                        <TeamLogo name={result.matchWithX.awayTeam} className="w-9 h-9" />
-                                                        <span className="text-gray-200">{result.matchWithX.awayTeam}</span>
-                                                    </div>
-                                                    <div className="mt-3 flex items-center justify-between gap-4">
-                                                        <span className="text-sm text-blue-300">{result.matchWithX.date}</span>
-                                                        <span className="font-semibold text-white">
-                                                            {result.matchWithX.htScore} → {result.matchWithX.ftScore}
-                                                        </span>
+                                                    <ArrowRight className="w-6 h-6 text-blue-400 mx-auto" />
+
+                                                    <div className="p-4 bg-blue-900/20 rounded-lg border border-blue-500/10">
+                                                        <div className="text-xs uppercase tracking-wide text-blue-300 mb-3">
+                                                            Sonraki maç: {selectedX}
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <TeamLogo name={result.matchWithX.homeTeam} className="w-9 h-9" />
+                                                            <span className="text-gray-200">{result.matchWithX.homeTeam}</span>
+                                                            <span className="text-gray-500">vs</span>
+                                                            <TeamLogo name={result.matchWithX.awayTeam} className="w-9 h-9" />
+                                                            <span className="text-gray-200">{result.matchWithX.awayTeam}</span>
+                                                        </div>
+                                                        <div className="mt-3 flex items-center justify-between gap-4">
+                                                            <span className="text-sm text-blue-300">{result.matchWithX.date}</span>
+                                                            <span className="font-semibold text-white">
+                                                                {result.matchWithX.htScore} → {result.matchWithX.ftScore}
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </section>
-                        ))}
-                    </div>
-                )}
+                                        ))}
+                                    </div>
+                                </section>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
-        </div>
+
+            <SeasonNormalMatchesModal
+                sourceResult={seasonDetailSource}
+                selectedX={selectedX}
+                results={seasonNormalResults}
+                onClose={closeSeasonDetail}
+            />
+        </>
     );
 };
