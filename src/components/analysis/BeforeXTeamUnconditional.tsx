@@ -12,6 +12,7 @@ interface BeforeXTeamUnconditionalProps {
 
 interface AnalysisResult {
     season: string;
+    triggerTeam: string;
     surpriseMatch: {
         date: string;
         homeTeam: string;
@@ -19,14 +20,12 @@ interface AnalysisResult {
         htScore: string;
         ftScore: string;
     };
-    nextMatch: {
+    matchWithX: {
         date: string;
         homeTeam: string;
         awayTeam: string;
         htScore: string;
         ftScore: string;
-        opponent: string;
-        isHome: boolean;
     };
 }
 
@@ -53,49 +52,77 @@ const isSurprise = (match: any): boolean =>
     (match.HTR === 'H' && match.FTR === 'A') ||
     (match.HTR === 'A' && match.FTR === 'H');
 
-const analyze = (teamX: string, league: string, matchData: any[]): AnalysisResult[] => {
+const analyze = (selectedX: string, league: string, matchData: any[]): AnalysisResult[] => {
     const sortedMatches = matchData
         .filter(match => match.Div === league)
         .filter(match => Number.isFinite(Number(match.Date)))
         .sort((a, b) => Number(a.Date) - Number(b.Date));
 
-    const teamMatches = sortedMatches.filter(
-        match => match.HomeTeam === teamX || match.AwayTeam === teamX
-    );
-
     const results: AnalysisResult[] = [];
+    const seen = new Set<string>();
 
-    for (let i = 0; i < teamMatches.length - 1; i++) {
-        const current = teamMatches[i];
-        if (!isSurprise(current)) continue;
+    // "X Takımdan Önce" mantığının şartsız hali:
+    // Her sürpriz maç için iki takımı da aday kabul et.
+    // Aday takımın ligdeki BİR SONRAKİ maçı seçilen X takımına karşıysa sonucu ekle.
+    // Böylece sürprizi yapan/yaşayan takımın kim olduğu önceden seçilmez; tek şart hedef X'tir.
+    sortedMatches.forEach((surpriseMatch) => {
+        if (!isSurprise(surpriseMatch)) return;
 
-        // Mevcut "X Takımdan Önce" formülündeki sıra mantığını koruyoruz:
-        // X'in sürpriz maçından sonra oynadığı ilk maç alınır.
-        // Tek fark: sonraki rakibin belirli bir Y takımı olması şartı yoktur.
-        const next = teamMatches[i + 1];
+        const surpriseDate = Number(surpriseMatch.Date);
+        const participants = [surpriseMatch.HomeTeam, surpriseMatch.AwayTeam]
+            .filter((team: string) => team && team !== selectedX);
 
-        results.push({
-            season: calculateSeason(current.Date),
-            surpriseMatch: {
-                date: formatDate(current.Date),
-                homeTeam: current.HomeTeam,
-                awayTeam: current.AwayTeam,
-                htScore: `${current.HTHG}-${current.HTAG}`,
-                ftScore: `${current.FTHG}-${current.FTAG}`
-            },
-            nextMatch: {
-                date: formatDate(next.Date),
-                homeTeam: next.HomeTeam,
-                awayTeam: next.AwayTeam,
-                htScore: `${next.HTHG}-${next.HTAG}`,
-                ftScore: `${next.FTHG}-${next.FTAG}`,
-                opponent: next.HomeTeam === teamX ? next.AwayTeam : next.HomeTeam,
-                isHome: next.HomeTeam === teamX
-            }
+        participants.forEach((triggerTeam: string) => {
+            const nextMatch = sortedMatches.find(match =>
+                Number(match.Date) > surpriseDate &&
+                (match.HomeTeam === triggerTeam || match.AwayTeam === triggerTeam)
+            );
+
+            if (!nextMatch) return;
+
+            const facesSelectedX =
+                (nextMatch.HomeTeam === triggerTeam && nextMatch.AwayTeam === selectedX) ||
+                (nextMatch.AwayTeam === triggerTeam && nextMatch.HomeTeam === selectedX);
+
+            if (!facesSelectedX) return;
+
+            const key = [
+                surpriseMatch.Date,
+                surpriseMatch.HomeTeam,
+                surpriseMatch.AwayTeam,
+                triggerTeam,
+                nextMatch.Date
+            ].join('|');
+
+            if (seen.has(key)) return;
+            seen.add(key);
+
+            results.push({
+                season: calculateSeason(surpriseMatch.Date),
+                triggerTeam,
+                surpriseMatch: {
+                    date: formatDate(surpriseMatch.Date),
+                    homeTeam: surpriseMatch.HomeTeam,
+                    awayTeam: surpriseMatch.AwayTeam,
+                    htScore: `${surpriseMatch.HTHG}-${surpriseMatch.HTAG}`,
+                    ftScore: `${surpriseMatch.FTHG}-${surpriseMatch.FTAG}`
+                },
+                matchWithX: {
+                    date: formatDate(nextMatch.Date),
+                    homeTeam: nextMatch.HomeTeam,
+                    awayTeam: nextMatch.AwayTeam,
+                    htScore: `${nextMatch.HTHG}-${nextMatch.HTAG}`,
+                    ftScore: `${nextMatch.FTHG}-${nextMatch.FTAG}`
+                }
+            });
         });
-    }
+    });
 
-    return results.sort((a, b) => b.season.localeCompare(a.season));
+    return results.sort((a, b) => {
+        const seasonCompare = b.season.localeCompare(a.season);
+        if (seasonCompare !== 0) return seasonCompare;
+        return b.surpriseMatch.date.localeCompare(a.surpriseMatch.date);
+    });
 };
 
 const TeamSelectionModal: React.FC<{
@@ -112,7 +139,7 @@ const TeamSelectionModal: React.FC<{
                     X Takımından Önce (Şartsız Takım)
                 </Dialog.Title>
                 <p className="text-gray-400 mb-6">
-                    Sadece X takımını seçin. Y takımı şartı uygulanmaz.
+                    X takımını seçin. Bu takımla karşılaşmadan hemen önce sürpriz yapan tüm takımlar sezon sezon listelenir.
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-[60vh] overflow-y-auto pr-2">
                     {teams.map(team => (
@@ -136,7 +163,7 @@ export const BeforeXTeamUnconditional: React.FC<BeforeXTeamUnconditionalProps> =
     matchData,
     onClose
 }) => {
-    const [teamX, setTeamX] = useState<string | null>(null);
+    const [selectedX, setSelectedX] = useState<string | null>(null);
     const [results, setResults] = useState<AnalysisResult[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -161,7 +188,7 @@ export const BeforeXTeamUnconditional: React.FC<BeforeXTeamUnconditionalProps> =
     }, [results]);
 
     const handleSelect = (team: string) => {
-        setTeamX(team);
+        setSelectedX(team);
         setIsAnalyzing(true);
         setTimeout(() => {
             setResults(analyze(team, league, matchData));
@@ -170,11 +197,11 @@ export const BeforeXTeamUnconditional: React.FC<BeforeXTeamUnconditionalProps> =
     };
 
     const handleBack = () => {
-        setTeamX(null);
+        setSelectedX(null);
         setResults([]);
     };
 
-    if (!teamX) {
+    if (!selectedX) {
         return (
             <TeamSelectionModal
                 isOpen={true}
@@ -197,13 +224,13 @@ export const BeforeXTeamUnconditional: React.FC<BeforeXTeamUnconditionalProps> =
                 </button>
 
                 <div className="flex items-center gap-5 mt-5">
-                    <TeamLogo name={teamX} className="w-16 h-16" />
+                    <TeamLogo name={selectedX} className="w-16 h-16" />
                     <div>
                         <h2 className="text-3xl font-bold text-white">
                             X Takımından Önce (Şartsız Takım)
                         </h2>
                         <p className="text-blue-200 mt-1">
-                            {teamX} için Y takımı şartı olmadan tüm sezonlardaki sürpriz → sonraki maç zincirleri
+                            {selectedX} ile karşılaşmadan önce gerçekleşen tüm sürprizler
                         </p>
                     </div>
                 </div>
@@ -217,7 +244,7 @@ export const BeforeXTeamUnconditional: React.FC<BeforeXTeamUnconditionalProps> =
                     </div>
                 ) : results.length === 0 ? (
                     <div className="text-center py-16 bg-gray-800/30 rounded-xl border border-gray-700/30">
-                        <p className="text-gray-300 text-lg">Bu takım için sürpriz zinciri bulunamadı.</p>
+                        <p className="text-gray-300 text-lg">Bu takım öncesinde uygun sürpriz bulunamadı.</p>
                     </div>
                 ) : (
                     <div className="space-y-8">
@@ -248,7 +275,7 @@ export const BeforeXTeamUnconditional: React.FC<BeforeXTeamUnconditionalProps> =
                                             <div className="grid md:grid-cols-[1fr_auto_1fr] gap-5 items-center">
                                                 <div>
                                                     <div className="text-xs uppercase tracking-wide text-red-300 mb-3">
-                                                        Sürpriz
+                                                        Sürpriz — {result.triggerTeam}
                                                     </div>
                                                     <div className="flex items-center gap-3">
                                                         <TeamLogo name={result.surpriseMatch.homeTeam} className="w-10 h-10" />
@@ -269,19 +296,19 @@ export const BeforeXTeamUnconditional: React.FC<BeforeXTeamUnconditionalProps> =
 
                                                 <div className="p-4 bg-blue-900/20 rounded-lg border border-blue-500/10">
                                                     <div className="text-xs uppercase tracking-wide text-blue-300 mb-3">
-                                                        X'in sonraki maçı — rakip şartsız
+                                                        Sonraki maç: {selectedX}
                                                     </div>
                                                     <div className="flex items-center gap-3">
-                                                        <TeamLogo name={result.nextMatch.homeTeam} className="w-9 h-9" />
-                                                        <span className="text-gray-200">{result.nextMatch.homeTeam}</span>
+                                                        <TeamLogo name={result.matchWithX.homeTeam} className="w-9 h-9" />
+                                                        <span className="text-gray-200">{result.matchWithX.homeTeam}</span>
                                                         <span className="text-gray-500">vs</span>
-                                                        <TeamLogo name={result.nextMatch.awayTeam} className="w-9 h-9" />
-                                                        <span className="text-gray-200">{result.nextMatch.awayTeam}</span>
+                                                        <TeamLogo name={result.matchWithX.awayTeam} className="w-9 h-9" />
+                                                        <span className="text-gray-200">{result.matchWithX.awayTeam}</span>
                                                     </div>
                                                     <div className="mt-3 flex items-center justify-between gap-4">
-                                                        <span className="text-sm text-blue-300">{result.nextMatch.date}</span>
+                                                        <span className="text-sm text-blue-300">{result.matchWithX.date}</span>
                                                         <span className="font-semibold text-white">
-                                                            {result.nextMatch.htScore} → {result.nextMatch.ftScore}
+                                                            {result.matchWithX.htScore} → {result.matchWithX.ftScore}
                                                         </span>
                                                     </div>
                                                 </div>
