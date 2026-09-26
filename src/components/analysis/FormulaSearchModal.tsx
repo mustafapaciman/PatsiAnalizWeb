@@ -29,6 +29,7 @@ import { LastScoreSurpriseAnalysis } from './LastScoreSurpriseAnalysis';
 import { SameOpponentMatchNumberAnalysis } from './SameOpponentMatchNumberAnalysis';
 import { BermudaTriangleFormula } from './BermudaTriangleFormula';
 import { BeforeXTeamFormula } from './BeforeXTeamFormula';
+import { BeforeXTeamUnconditional } from './BeforeXTeamUnconditional';
 import { SameOpponentScoreAnalysis } from './SameOpponentScoreAnalysis';
 import { AgainstThisTeamAnalysis } from './AgainstThisTeamAnalysis'; // Bu satırı ekleyin
 import { BermudaTriangleV2 } from './BermudaTriangleV2';
@@ -275,6 +276,12 @@ const FORMULAS = [
         id: 'before-x-team',
         name: 'X Takımdan Önce',
         description: 'X takımının sürpriz sonrası Y ile karşılaşmalarını analiz eder',
+        icon: ArrowRight
+    },
+    {
+        id: 'before-x-team-unconditional',
+        name: 'X Takımından Önce (Şartsız Takım)',
+        description: 'Sadece X takımını seçer; X takımının sürpriz maçlarından sonra oynadığı ilk maçı rakip şartı olmadan tüm sezonlarda analiz eder',
         icon: ArrowRight
     },
     {
@@ -2481,6 +2488,9 @@ export function FormulaSearchModal({ isOpen, onClose, matchData }: FormulaSearch
         } else if (selectedFormula === 'before-x-team') {
             setStep('analysis'); // Bu satırı ekle
             return;
+        } else if (selectedFormula === 'before-x-team-unconditional') {
+            setStep('analysis');
+            return;
         } else if (selectedFormula === 'same-opponent-score') {
             setStep('analysis');
             return;
@@ -2812,6 +2822,13 @@ export function FormulaSearchModal({ isOpen, onClose, matchData }: FormulaSearch
                                         />
                                     ) : selectedFormula === 'before-x-team' ? (
                                         <BeforeXTeamFormula
+                                            league={selectedLeague!}
+                                            season={selectedSeason!}
+                                            matchData={matchData}
+                                            onClose={() => setStep('formula')}
+                                        />
+                                    ) : selectedFormula === 'before-x-team-unconditional' ? (
+                                        <BeforeXTeamUnconditional
                                             league={selectedLeague!}
                                             season={selectedSeason!}
                                             matchData={matchData}
