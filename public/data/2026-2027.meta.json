@@ -1,0 +1,165 @@
+{
+  "season": "2026-2027",
+  "source": "https://football-data.co.uk/mmz4281/2627/all-euro-data-2026-2027.xlsx",
+  "retrievedAt": "2026-10-26T23:04:09.766Z",
+  "sha256": "9976bf7054c636b5ce53464a389d34e4534eda40567af09c0947e8ff94df1249",
+  "latestMatchDate": "2026-10-21",
+  "totalMatches": 1792,
+  "addedMatches": 506,
+  "leagues": [
+    {
+      "league": "E0",
+      "matches": 70,
+      "previousMatches": 50,
+      "added": 20,
+      "latestMatchDate": "2026-10-19"
+    },
+    {
+      "league": "E1",
+      "matches": 132,
+      "previousMatches": 95,
+      "added": 37,
+      "latestMatchDate": "2026-10-20"
+    },
+    {
+      "league": "E2",
+      "matches": 126,
+      "previousMatches": 83,
+      "added": 43,
+      "latestMatchDate": "2026-10-21"
+    },
+    {
+      "league": "E3",
+      "matches": 138,
+      "previousMatches": 84,
+      "added": 54,
+      "latestMatchDate": "2026-10-20"
+    },
+    {
+      "league": "EC",
+      "matches": 155,
+      "previousMatches": 108,
+      "added": 47,
+      "latestMatchDate": "2026-10-10"
+    },
+    {
+      "league": "SC0",
+      "matches": 54,
+      "previousMatches": 42,
+      "added": 12,
+      "latestMatchDate": "2026-10-18"
+    },
+    {
+      "league": "SC1",
+      "matches": 54,
+      "previousMatches": 35,
+      "added": 19,
+      "latestMatchDate": "2026-10-20"
+    },
+    {
+      "league": "SC2",
+      "matches": 54,
+      "previousMatches": 39,
+      "added": 15,
+      "latestMatchDate": "2026-10-17"
+    },
+    {
+      "league": "SC3",
+      "matches": 55,
+      "previousMatches": 40,
+      "added": 15,
+      "latestMatchDate": "2026-10-17"
+    },
+    {
+      "league": "I1",
+      "matches": 70,
+      "previousMatches": 50,
+      "added": 20,
+      "latestMatchDate": "2026-10-19"
+    },
+    {
+      "league": "I2",
+      "matches": 70,
+      "previousMatches": 50,
+      "added": 20,
+      "latestMatchDate": "2026-10-18"
+    },
+    {
+      "league": "SP1",
+      "matches": 89,
+      "previousMatches": 69,
+      "added": 20,
+      "latestMatchDate": "2026-10-21"
+    },
+    {
+      "league": "SP2",
+      "matches": 110,
+      "previousMatches": 66,
+      "added": 44,
+      "latestMatchDate": "2026-10-19"
+    },
+    {
+      "league": "D1",
+      "matches": 54,
+      "previousMatches": 36,
+      "added": 18,
+      "latestMatchDate": "2026-10-18"
+    },
+    {
+      "league": "D2",
+      "matches": 72,
+      "previousMatches": 54,
+      "added": 18,
+      "latestMatchDate": "2026-10-18"
+    },
+    {
+      "league": "F1",
+      "matches": 63,
+      "previousMatches": 45,
+      "added": 18,
+      "latestMatchDate": "2026-10-18"
+    },
+    {
+      "league": "F2",
+      "matches": 81,
+      "previousMatches": 63,
+      "added": 18,
+      "latestMatchDate": "2026-10-19"
+    },
+    {
+      "league": "B1",
+      "matches": 72,
+      "previousMatches": 63,
+      "added": 9,
+      "latestMatchDate": "2026-10-11"
+    },
+    {
+      "league": "N1",
+      "matches": 81,
+      "previousMatches": 63,
+      "added": 18,
+      "latestMatchDate": "2026-10-18"
+    },
+    {
+      "league": "P1",
+      "matches": 72,
+      "previousMatches": 62,
+      "added": 10,
+      "latestMatchDate": "2026-10-19"
+    },
+    {
+      "league": "T1",
+      "matches": 72,
+      "previousMatches": 54,
+      "added": 18,
+      "latestMatchDate": "2026-10-19"
+    },
+    {
+      "league": "G1",
+      "matches": 48,
+      "previousMatches": 35,
+      "added": 13,
+      "latestMatchDate": "2026-10-18"
+    }
+  ]
+}

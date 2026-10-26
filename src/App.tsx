@@ -35,7 +35,7 @@ const tabs = [
   { id: 'matchSchedule', name: 'Maç Programı' }
 ] as const;
 
-const MATCH_DATA_VERSION = '2026-2027-v1';
+const MATCH_DATA_VERSION = '2026-2027-20261027-v2';
 
 // DO NOT DELETE START - Main App Component
 export default function App() {

@@ -43,6 +43,7 @@ export default defineConfig({
     include: ['react', 'react-dom'],
   },
   resolve: {
+    extensions: ['.ts', '.tsx', '.mjs', '.js', '.jsx', '.json'],
     alias: {
       '@': path.resolve(__dirname, './src'),
     },

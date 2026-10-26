@@ -35,7 +35,14 @@ const DATA_FILES = [
 export async function loadMatchData(): Promise<Match[]> {
   try {
     console.log('Loading match data from GitHub...');
-    const buffers = await fetchMultipleFromGithub(DATA_FILES);
+    // The published current-season snapshot is validated with its release.
+    // Older seasons continue to use the existing historical source.
+    const buffers = await Promise.all(DATA_FILES.map(async path => {
+      if (path !== 'data/2026-2027.xlsx') return (await fetchMultipleFromGithub([path]))[0];
+      const response = await fetch(`${import.meta.env.BASE_URL}data/2026-2027.xlsx`, { cache: 'no-cache' });
+      if (!response.ok) throw new Error(`Güncel sezon verisi yüklenemedi: ${response.status}`);
+      return response.arrayBuffer();
+    }));
     
     const allMatches: Match[] = [];
     
@@ -51,7 +58,11 @@ export async function loadMatchData(): Promise<Match[]> {
           console.log(`Processing sheet: ${sheetName}`);
           const worksheet = workbook.Sheets[sheetName];
           const jsonData = XLSX.utils.sheet_to_json(worksheet);
-          allMatches.push(...(jsonData as Match[]));
+          const fileSeason = DATA_FILES[i].match(/(\d{4}-\d{4})\./)?.[1];
+          allMatches.push(...(jsonData as Match[]).map(match => ({
+            ...match,
+            ...(fileSeason ? { Season: fileSeason } : {})
+          })));
         }
       } catch (xlsxError) {
         console.error(`Error processing Excel file ${DATA_FILES[i]}:`, xlsxError);

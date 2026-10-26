@@ -30,6 +30,7 @@ import { SameOpponentMatchNumberAnalysis } from './SameOpponentMatchNumberAnalys
 import { BermudaTriangleFormula } from './BermudaTriangleFormula';
 import { BeforeXTeamFormula } from './BeforeXTeamFormula';
 import { BeforeXTeamUnconditional } from './BeforeXTeamUnconditional';
+import { ScoreFollowingSurprises } from './ScoreFollowingSurprises';
 import { SameOpponentScoreAnalysis } from './SameOpponentScoreAnalysis';
 import { AgainstThisTeamAnalysis } from './AgainstThisTeamAnalysis'; // Bu satırı ekleyin
 import { BermudaTriangleV2 } from './BermudaTriangleV2';
@@ -279,9 +280,15 @@ const FORMULAS = [
         icon: ArrowRight
     },
     {
+        id: 'score-following-surprises',
+        name: 'X Takımı + Skor → Sonraki 5 Maçta Sürpriz',
+        description: 'X takımının skor maçlarını tüm sezonlarda bulur; skor tarihinden sonra ligdeki her takımın ilk 5 maçındaki sürprizleri gösterir',
+        icon: Hash
+    },
+    {
         id: 'before-x-team-unconditional',
         name: 'X Takımından Önce (Şartsız Takım)',
-        description: 'Sadece X takımını seçer; X takımının sürpriz maçlarından sonra oynadığı ilk maçı rakip şartı olmadan tüm sezonlarda analiz eder',
+        description: 'Sadece X takımını seçer; sürprizden sonraki ilk maçı X takımına karşı olan takımları tüm sezonlarda gösterir',
         icon: ArrowRight
     },
     {
@@ -2411,6 +2418,11 @@ export function FormulaSearchModal({ isOpen, onClose, matchData }: FormulaSearch
     // Analiz başlatma fonksiyonu
     const startAnalysis = () => {
         console.log("Seçilen formül:", selectedFormula);
+
+        if (selectedFormula === 'score-following-surprises') {
+            setStep('analysis');
+            return;
+        }
         
         if (selectedFormula === 'week-analysis') {
             console.log("Hafta analizi başlatılıyor...");
@@ -2690,7 +2702,9 @@ export function FormulaSearchModal({ isOpen, onClose, matchData }: FormulaSearch
                         ) : (
                             <div>
                                 {step === 'analysis' && (
-                                    selectedFormula === 'week-analysis' ? (
+                                    selectedFormula === 'score-following-surprises' ? (
+                                        <ScoreFollowingSurprises league={selectedLeague!} matchData={matchData} onClose={() => setStep('formula')} />
+                                    ) : selectedFormula === 'week-analysis' ? (
                                         console.log("Rendering WeekAnalysis..."),
                                         <WeekAnalysis
                                             league={selectedLeague!}
